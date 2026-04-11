@@ -429,23 +429,26 @@ function startVoice(){
   recognition.continuous=false;
   recognition.interimResults=false;
   recognition.lang='en-US';
+  let gotResult=false;
   recognition.onresult=async(e)=>{
+    gotResult=true;
     const transcript=Array.from(e.results).map(r=>r[0].transcript).join(' ').trim();
     isRecording=false;resetVoiceBtn();
     if(!transcript){showToast('Nothing heard — try again');return;}
-    showToast('Heard: "'+transcript+'"');
+    showToast('Heard: "'+transcript+'" — logging...');
     document.getElementById('analyzingBar').classList.remove('hidden');
     try{
-      const text=await callGPT([{role:'user',content:`User said: "${transcript}". Extract food items and estimate calories. Return ONLY JSON array: [{"name":"item","calories":number,"notes":"portion"}].`}],300);
-      const items=JSON.parse(text.replace(/```json|```/g,'').trim());
+      const text=await callGPT([{role:'user',content:`User said: "${transcript}". Extract food items and estimate calories. Return ONLY a JSON array, no other text: [{"name":"item","calories":number,"notes":"portion"}].`}],300);
+      const clean=text.replace(/```json|```/g,'').trim();
+      const items=JSON.parse(clean);
       const t=timeLabel();
       updateTodayData(d=>({...d,items:[...d.items,...items.map(i=>({...i,id:String(Date.now()+Math.random()),source:'voice',time:t}))]}));
-      showToast(`Logged: ${items.map(i=>i.name).join(', ')}`);
-    }catch(err){showToast('Error: '+(err.message||'Failed'),7000);}
+      showToast('✅ Added: '+items.map(i=>i.name+' ('+i.calories+' cal)').join(', '), 6000);
+    }catch(err){showToast('❌ Error: '+(err.message||'Failed'),7000);}
     document.getElementById('analyzingBar').classList.add('hidden');
   };
   recognition.onerror=(e)=>{isRecording=false;resetVoiceBtn();showToast('Mic error: '+e.error,7000);};
-  recognition.onend=()=>{isRecording=false;resetVoiceBtn();};
+  recognition.onend=()=>{if(!gotResult){isRecording=false;resetVoiceBtn();}};
   recognition.start();
   isRecording=true;
   document.getElementById('voiceBtn').classList.add('rec');

@@ -115,32 +115,25 @@
     <div class="modal-btns"><button class="modal-cancel" onclick="closeEditModal()">Cancel</button><button class="modal-confirm" onclick="saveEditModal()">Save</button></div>
   </div>
 </div>
-
 <div class="modal-overlay hidden" id="exModal">
   <div class="modal"><div class="modal-title">Log Exercise</div>
     <input type="text" id="exNameInput" placeholder="Activity (e.g. OrangeTheory)">
     <input type="number" id="exCalInput" placeholder="Calories burned" inputmode="numeric">
-    <div class="modal-btns">
-      <button class="modal-cancel" onclick="closeExModal()">Cancel</button>
-      <button class="modal-confirm" onclick="saveExercise()">Add</button>
-    </div>
+    <div class="modal-btns"><button class="modal-cancel" onclick="closeExModal()">Cancel</button><button class="modal-confirm" onclick="saveExercise()">Add</button></div>
   </div>
 </div>
-
 <div class="modal-overlay hidden" id="stepsModal">
   <div class="modal"><div class="modal-title">Log Steps</div>
     <input type="number" id="stepsInput" placeholder="Number of steps" inputmode="numeric">
     <div class="modal-btns"><button class="modal-cancel" onclick="closeStepsModal()">Cancel</button><button class="modal-confirm" onclick="saveSteps()">Save</button></div>
   </div>
 </div>
-
 <div class="modal-overlay hidden" id="goalModal">
   <div class="modal"><div class="modal-title">Daily Calorie Goal</div>
     <input type="number" id="goalInput" placeholder="e.g. 1800" inputmode="numeric">
     <div class="modal-btns"><button class="modal-cancel" onclick="closeGoalModal()">Cancel</button><button class="modal-confirm" onclick="saveGoal()">Save</button></div>
   </div>
 </div>
-
 <div class="modal-overlay hidden" id="typeModal">
   <div class="modal"><div class="modal-title">What did you eat?</div>
     <input type="text" id="typeInput" placeholder="e.g. 2 scrambled eggs and toast">
@@ -148,9 +141,8 @@
   </div>
 </div>
 
-<!-- Separate file inputs -->
-<input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event, 'food')">
-<input type="file" id="barcodeInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event, 'barcode')">
+<input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event,'food')">
+<input type="file" id="barcodeInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event,'barcode')">
 
 <!-- HEADER -->
 <div class="header">
@@ -239,7 +231,7 @@
 <div id="settingsTab" class="content hidden">
   <div class="setup-card" style="margin-top:16px">
     <div class="setup-title">Settings</div>
-    <div class="setup-desc">Paste your OpenAI API key from <strong>platform.openai.com</strong>. Uses gpt-4o-mini — very accurate and affordable (pennies per photo).</div>
+    <div class="setup-desc">Paste your OpenAI API key from <strong>platform.openai.com</strong>. Photos are compressed before sending to save cost — each photo costs about $0.001.</div>
     <input type="password" class="setup-input" id="apiKeyInput" placeholder="sk-...">
     <button class="setup-save" onclick="saveApiKey()">Save Key</button>
   </div>
@@ -253,7 +245,7 @@
 </div>
 
 <script>
-const STORE_KEY='cal-v9',API_STORE='cal-oai-key';
+const STORE_KEY='cal-v10',API_STORE='cal-oai-key';
 let apiKey=localStorage.getItem(API_STORE)||'';
 let goal=parseInt(localStorage.getItem('cal-goal')||'1800');
 let logs={};try{logs=JSON.parse(localStorage.getItem(STORE_KEY)||'{}');}catch{}
@@ -263,15 +255,7 @@ function todayKey(){return new Date().toISOString().split('T')[0];}
 function getTodayData(){return logs[todayKey()]||{items:[],steps:null,exercise:[]};}
 function saveLogs(){localStorage.setItem(STORE_KEY,JSON.stringify(logs));}
 function updateTodayData(fn){const k=todayKey();logs[k]=fn(logs[k]||{items:[],steps:null,exercise:[]});saveLogs();render();}
-
-function showToast(msg,dur=5000){
-  const t=document.getElementById('toast');
-  t.textContent=msg;
-  t.classList.remove('hidden');
-  clearTimeout(t._t);
-  t._t=setTimeout(()=>t.classList.add('hidden'),dur);
-}
-
+function showToast(msg,dur=5000){const t=document.getElementById('toast');t.textContent=msg;t.classList.remove('hidden');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.add('hidden'),dur);}
 function checkKeyThen(fn){if(!apiKey){showToast('Add your OpenAI key in Settings first');switchTab('settings');return;}fn();}
 
 function switchTab(tab){
@@ -283,7 +267,6 @@ function switchTab(tab){
 }
 
 function saveApiKey(){apiKey=document.getElementById('apiKeyInput').value.trim();localStorage.setItem(API_STORE,apiKey);showToast('API key saved!');switchTab('today');}
-
 function openGoalModal(){document.getElementById('goalInput').value=goal;document.getElementById('goalModal').classList.remove('hidden');}
 function closeGoalModal(){document.getElementById('goalModal').classList.add('hidden');}
 function saveGoal(){const v=parseInt(document.getElementById('goalInput').value);if(!isNaN(v)&&v>0){goal=v;localStorage.setItem('cal-goal',v);render();}closeGoalModal();}
@@ -372,7 +355,31 @@ function renderHistory(){
   }).join('');
 }
 
-async function callGPT(messages,max_tokens=600){
+// Compress image to max 512px and 0.6 quality — reduces tokens by ~90%
+function compressImage(file){
+  return new Promise((resolve)=>{
+    const reader=new FileReader();
+    reader.onload=(e)=>{
+      const img=new Image();
+      img.onload=()=>{
+        const MAX=512;
+        let w=img.width,h=img.height;
+        if(w>h){if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}}
+        else{if(h>MAX){w=Math.round(w*MAX/h);h=MAX;}}
+        const canvas=document.createElement('canvas');
+        canvas.width=w;canvas.height=h;
+        const ctx=canvas.getContext('2d');
+        ctx.drawImage(img,0,0,w,h);
+        const compressed=canvas.toDataURL('image/jpeg',0.6);
+        resolve(compressed);
+      };
+      img.src=e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function callGPT(messages,max_tokens=400){
   const resp=await fetch('https://api.openai.com/v1/chat/completions',{
     method:'POST',
     headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},
@@ -383,89 +390,69 @@ async function callGPT(messages,max_tokens=600){
   return data.choices[0].message.content;
 }
 
-// Handles both food photos and barcode photos
-async function handlePhoto(event, mode){
+async function handlePhoto(event,mode){
   const file=event.target.files[0];
   if(!file)return;
   event.target.value='';
-  const reader=new FileReader();
-  reader.onload=async(e)=>{
-    const full=e.target.result,b64=full.split(',')[1];
-    document.getElementById('analyzingBar').classList.remove('hidden');
-    showToast('Analyzing... please wait');
-    try{
-      let prompt;
-      if(mode==='barcode'){
-        prompt='This is a photo of a food product barcode or package. Identify the product and estimate its calories per serving. Return ONLY a JSON array: [{"name":"product name","calories":number,"notes":"serving size"}]. If you can read the nutrition label, use those exact numbers.';
-      } else {
-        prompt='Analyze this food photo. Return ONLY a JSON array: [{"name":"item name","calories":number,"notes":"portion note"}]. Be specific and accurate. List each food item separately.';
-      }
-      const text=await callGPT([{role:'user',content:[
-        {type:'image_url',image_url:{url:`data:image/jpeg;base64,${b64}`}},
-        {type:'text',text:prompt}
-      ]}],800);
-      const clean=text.replace(/```json|```/g,'').trim();
-      const items=JSON.parse(clean);
-      const t=timeLabel();
-      const source=mode==='barcode'?'barcode':'photo';
-      updateTodayData(d=>({...d,items:[...d.items,...items.map(i=>({...i,id:String(Date.now()+Math.random()),source,time:t,imageData:full}))]}));
-      showToast(`Added ${items.length} item${items.length>1?'s':''}!`);
-    }catch(err){
-      showToast('Error: '+(err.message||'Analysis failed. Try again.'),6000);
+  showToast('Compressing and analyzing...');
+  document.getElementById('analyzingBar').classList.remove('hidden');
+  try{
+    const compressed=await compressImage(file);
+    const b64=compressed.split(',')[1];
+    let prompt;
+    if(mode==='barcode'){
+      prompt='This is a photo of a food product or its nutrition label. Identify the product and its calories per serving from the label if visible, or estimate if not. Return ONLY a JSON array: [{"name":"product name","calories":number,"notes":"serving size"}].';
+    }else{
+      prompt='Analyze this food photo. Return ONLY a JSON array: [{"name":"item name","calories":number,"notes":"portion"}]. List each item separately.';
     }
-    document.getElementById('analyzingBar').classList.add('hidden');
-  };
-  reader.readAsDataURL(file);
+    const text=await callGPT([{role:'user',content:[
+      {type:'image_url',image_url:{url:`data:image/jpeg;base64,${b64}`,detail:'low'}},
+      {type:'text',text:prompt}
+    ]}],400);
+    const items=JSON.parse(text.replace(/```json|```/g,'').trim());
+    const t=timeLabel();
+    const source=mode==='barcode'?'barcode':'photo';
+    // Store compressed thumbnail for display
+    updateTodayData(d=>({...d,items:[...d.items,...items.map(i=>({...i,id:String(Date.now()+Math.random()),source,time:t,imageData:compressed}))]}));
+    showToast(`Added ${items.length} item${items.length>1?'s':''}!`);
+  }catch(err){
+    showToast('Error: '+(err.message||'Failed. Try again.'),7000);
+  }
+  document.getElementById('analyzingBar').classList.add('hidden');
 }
 
 function startVoice(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR){showToast('Voice not supported in this browser — use Type instead',6000);return;}
-  if(isRecording){
-    if(recognition)recognition.stop();
-    isRecording=false;
-    resetVoiceBtn();
-    return;
-  }
+  if(!SR){showToast('Voice not supported — use Type instead');return;}
+  if(isRecording){if(recognition)recognition.stop();isRecording=false;resetVoiceBtn();return;}
   recognition=new SR();
   recognition.continuous=false;
   recognition.interimResults=false;
   recognition.lang='en-US';
   recognition.onresult=async(e)=>{
     const transcript=Array.from(e.results).map(r=>r[0].transcript).join(' ').trim();
-    isRecording=false;
-    resetVoiceBtn();
+    isRecording=false;resetVoiceBtn();
     if(!transcript){showToast('Nothing heard — try again');return;}
     showToast('Heard: "'+transcript+'"');
     document.getElementById('analyzingBar').classList.remove('hidden');
     try{
-      const text=await callGPT([{role:'user',content:`The user said: "${transcript}". Extract all food items mentioned and estimate their calories. Return ONLY a valid JSON array: [{"name":"item","calories":number,"notes":"portion"}]. Always return an array even for one item.`}]);
-      const clean=text.replace(/```json|```/g,'').trim();
-      const items=JSON.parse(clean);
+      const text=await callGPT([{role:'user',content:`User said: "${transcript}". Extract food items and estimate calories. Return ONLY JSON array: [{"name":"item","calories":number,"notes":"portion"}].`}],300);
+      const items=JSON.parse(text.replace(/```json|```/g,'').trim());
       const t=timeLabel();
       updateTodayData(d=>({...d,items:[...d.items,...items.map(i=>({...i,id:String(Date.now()+Math.random()),source:'voice',time:t}))]}));
-      showToast(`Logged ${items.length} item${items.length>1?'s':''}!`);
-    }catch(err){
-      showToast('Could not parse food. Try again.',6000);
-    }
+      showToast(`Logged: ${items.map(i=>i.name).join(', ')}`);
+    }catch(err){showToast('Error: '+(err.message||'Failed'),7000);}
     document.getElementById('analyzingBar').classList.add('hidden');
   };
-  recognition.onerror=(e)=>{
-    isRecording=false;
-    resetVoiceBtn();
-    showToast('Mic error: '+e.error+'. Check mic permissions.',6000);
-  };
-  recognition.onend=()=>{
-    if(isRecording){isRecording=false;resetVoiceBtn();}
-  };
+  recognition.onerror=(e)=>{isRecording=false;resetVoiceBtn();showToast('Mic error: '+e.error,7000);};
+  recognition.onend=()=>{isRecording=false;resetVoiceBtn();};
   recognition.start();
   isRecording=true;
   document.getElementById('voiceBtn').classList.add('rec');
   document.getElementById('micLabel').textContent='Listening...';
   document.getElementById('micSub').textContent='Tap to stop';
-  showToast('Listening — say what you ate, then stop speaking');
+  showToast('Listening — say what you ate');
 }
-
 function resetVoiceBtn(){
   document.getElementById('voiceBtn').classList.remove('rec');
   document.getElementById('micLabel').textContent='Voice';
@@ -474,18 +461,17 @@ function resetVoiceBtn(){
 
 function closeTypeModal(){document.getElementById('typeModal').classList.add('hidden');document.getElementById('typeInput').value='';}
 async function submitTypeLog(){
-  const val=document.getElementById('typeInput').value.trim();
-  if(!val)return;
+  const val=document.getElementById('typeInput').value.trim();if(!val)return;
   closeTypeModal();
   document.getElementById('analyzingBar').classList.remove('hidden');
   showToast('Analyzing...');
   try{
-    const text=await callGPT([{role:'user',content:`The user logged: "${val}". Extract food items and estimate calories. Return ONLY a valid JSON array: [{"name":"item","calories":number,"notes":"portion"}].`}]);
+    const text=await callGPT([{role:'user',content:`User logged: "${val}". Extract food and estimate calories. Return ONLY JSON array: [{"name":"item","calories":number,"notes":"portion"}].`}],300);
     const items=JSON.parse(text.replace(/```json|```/g,'').trim());
     const t=timeLabel();
     updateTodayData(d=>({...d,items:[...d.items,...items.map(i=>({...i,id:String(Date.now()+Math.random()),source:'type',time:t}))]}));
-    showToast(`Logged ${items.length} item${items.length>1?'s':''}!`);
-  }catch(err){showToast('Error: '+(err.message||'Failed'),6000);}
+    showToast(`Logged: ${items.map(i=>i.name).join(', ')}`);
+  }catch(err){showToast('Error: '+(err.message||'Failed'),7000);}
   document.getElementById('analyzingBar').classList.add('hidden');
 }
 document.getElementById('typeInput').addEventListener('keydown',e=>{if(e.key==='Enter')submitTypeLog();});
@@ -506,20 +492,14 @@ function closeExModal(){document.getElementById('exModal').classList.add('hidden
 function saveExercise(){
   const name=document.getElementById('exNameInput').value.trim();
   const cal=parseInt(document.getElementById('exCalInput').value);
-  if(!name){showToast('Please enter an activity name',5000);return;}
-  if(isNaN(cal)||cal<=0){showToast('Please enter calories burned',5000);return;}
+  if(!name){showToast('Please enter an activity name');return;}
+  if(isNaN(cal)||cal<=0){showToast('Please enter calories burned');return;}
   updateTodayData(d=>({...d,exercise:[...(d.exercise||[]),{id:String(Date.now()),label:name,calories:cal}]}));
-  closeExModal();
-  showToast('Exercise logged!');
+  closeExModal();showToast('Exercise logged!');
 }
 function deleteExercise(id){updateTodayData(d=>({...d,exercise:(d.exercise||[]).filter(e=>e.id!==id)}));}
 
-function openStepsModal(){
-  document.getElementById('stepsModal').classList.remove('hidden');
-  const d=getTodayData();
-  document.getElementById('stepsInput').value=d.steps||'';
-  setTimeout(()=>document.getElementById('stepsInput').focus(),150);
-}
+function openStepsModal(){document.getElementById('stepsModal').classList.remove('hidden');const d=getTodayData();document.getElementById('stepsInput').value=d.steps||'';setTimeout(()=>document.getElementById('stepsInput').focus(),150);}
 function closeStepsModal(){document.getElementById('stepsModal').classList.add('hidden');}
 function saveSteps(){const v=parseInt(document.getElementById('stepsInput').value);if(!isNaN(v))updateTodayData(d=>({...d,steps:v}));closeStepsModal();showToast('Steps saved!');}
 document.getElementById('stepsInput').addEventListener('keydown',e=>{if(e.key==='Enter')saveSteps();});

@@ -9,36 +9,42 @@
 <title>Calories</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-  html{background:#ffffff!important;min-height:100%;}
-  body{background:#ffffff!important;color:#000;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;min-height:100vh;padding-bottom:60px;}
-  #app{background:#ffffff;min-height:100vh;}
+  html,body{background:#ffffff!important;min-height:100%;}
+  body{color:#000;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;min-height:100vh;padding-bottom:60px;}
 
-  /* Header - NOT sticky, scrolls away */
+  /* SCREENS */
+  .screen{display:none;min-height:100vh;background:#ffffff;}
+  .screen.active{display:block;}
+
+  /* HEADER */
   .header{background:#ffffff;padding:56px 20px 14px;border-bottom:1px solid #efefef;}
   .header-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
-  .app-title{font-size:28px;font-weight:800;color:#000;}
-  .streak-badge{border:1.5px solid #e0e0e0;border-radius:22px;padding:7px 14px;font-size:14px;font-weight:600;color:#000;background:#fff;}
+  .app-title{font-size:28px;font-weight:800;}
+  .streak-badge{border:1.5px solid #e0e0e0;border-radius:22px;padding:7px 14px;font-size:14px;font-weight:600;background:#fff;}
+
+  /* WEEK STRIP */
   .week-strip{display:flex;justify-content:space-between;}
   .day-item{display:flex;flex-direction:column;align-items:center;gap:5px;}
   .day-label{font-size:11px;color:#aaa;font-weight:500;}
-  .day-circle{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;border:2px solid #e8e8e8;color:#ccc;background:#fff;}
+  .day-circle{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;border:2px solid #e8e8e8;color:#ccc;}
   .day-circle.today{background:#000;color:#fff;border-color:#000;}
   .day-circle.over{border-color:#ff3b30;color:#ff3b30;}
   .day-circle.good{border-color:#34c759;color:#34c759;}
   .day-circle.warn{border-color:#ff9f0a;color:#ff9f0a;}
 
-  .content{background:#ffffff;}
+  /* MAIN CARD */
   .main-card{background:#fff;margin:16px 16px 12px;border-radius:22px;padding:22px 20px;box-shadow:0 2px 14px rgba(0,0,0,0.08);border:1px solid #efefef;}
   .cal-row{display:flex;justify-content:space-between;align-items:center;}
-  .cal-number{font-size:56px;font-weight:800;line-height:1;color:#000;letter-spacing:-2px;}
+  .cal-number{font-size:56px;font-weight:800;line-height:1;letter-spacing:-2px;}
   .cal-denom{font-size:20px;font-weight:400;color:#bbb;margin-left:2px;}
-  .cal-label{font-size:14px;color:#999;margin-top:6px;display:flex;align-items:center;gap:6px;}
+  .cal-label{font-size:14px;color:#999;margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
   .goal-edit-btn{background:none;border:none;color:#007aff;font-size:13px;cursor:pointer;font-weight:600;padding:0;}
   .net-note{font-size:12px;color:#bbb;margin-top:5px;}
   .ring-wrap{position:relative;width:84px;height:84px;flex-shrink:0;}
   .ring-wrap svg{transform:rotate(-90deg);}
-  .ring-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:13px;font-weight:700;color:#000;}
+  .ring-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:13px;font-weight:700;}
 
+  /* LOG BUTTONS */
   .log-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 16px 12px;}
   .log-btn{border:none;border-radius:18px;padding:18px 8px 16px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;}
   .log-btn.photo{background:#000;color:#fff;}
@@ -48,7 +54,6 @@
   .log-btn.barcode{background:#f2f2f7;color:#000;}
   .log-btn-label{font-size:15px;font-weight:700;line-height:1;}
   .log-btn-sub{font-size:11px;font-weight:400;opacity:0.55;line-height:1;}
-
   .voice-bars{display:flex;align-items:center;gap:3px;height:20px;margin-bottom:2px;}
   .voice-bar{width:3px;background:currentColor;border-radius:2px;opacity:0.4;}
   .voice-bar.b1{height:6px;}.voice-bar.b2{height:12px;}.voice-bar.b3{height:18px;}.voice-bar.b4{height:10px;}.voice-bar.b5{height:6px;}
@@ -60,36 +65,70 @@
   .rec .voice-bar.b5{animation:bar 0.8s ease-in-out infinite 0.4s;}
   @keyframes bar{0%,100%{transform:scaleY(0.4);}50%{transform:scaleY(1.3);}}
 
+  /* STAT CARDS */
   .stat-cards{display:flex;gap:10px;margin:0 16px 14px;}
   .stat-card{flex:1;background:#fff;border-radius:18px;padding:14px 12px;box-shadow:0 2px 10px rgba(0,0,0,0.07);border:1px solid #efefef;cursor:pointer;}
   .stat-lbl{font-size:10px;color:#aaa;font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.4px;}
-  .stat-val{font-size:19px;font-weight:700;color:#000;}
+  .stat-val{font-size:18px;font-weight:700;}
   .stat-act{font-size:11px;color:#007aff;margin-top:5px;font-weight:600;}
 
-  .section-title{font-size:20px;font-weight:800;padding:4px 20px 10px;color:#000;}
-  .food-card{background:#fff;margin:0 16px 10px;border-radius:18px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.07);border:1px solid #efefef;display:flex;align-items:stretch;}
-  .food-thumb{width:88px;min-height:88px;background:#f7f7f7;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden;}
-  .food-thumb img{width:88px;height:100%;object-fit:cover;}
-  .food-thumb-placeholder{font-size:12px;color:#ccc;font-weight:600;text-align:center;padding:8px;line-height:1.3;}
-  .food-info{flex:1;padding:13px 14px;min-width:0;background:#fff;}
-  .food-name-row{display:flex;justify-content:space-between;align-items:flex-start;gap:6px;}
-  .food-name{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
-  .food-time{font-size:12px;color:#bbb;flex-shrink:0;}
-  .food-cals{font-size:22px;font-weight:800;margin-top:4px;color:#000;}
-  .food-cal-label{font-size:13px;font-weight:400;color:#999;margin-left:2px;}
-  .food-notes{font-size:12px;color:#bbb;margin-top:2px;}
-  .food-actions{display:flex;gap:8px;margin-top:9px;}
-  .edit-btn{background:#f2f2f7;border:none;border-radius:8px;padding:5px 13px;font-size:12px;color:#007aff;font-weight:600;cursor:pointer;}
-  .del-btn{background:#fff2f2;border:none;border-radius:8px;padding:5px 11px;font-size:12px;color:#ff3b30;font-weight:600;cursor:pointer;}
+  /* MEAL CARDS - one per photo/log session */
+  .section-title{font-size:20px;font-weight:800;padding:4px 20px 10px;}
+  .meal-card{background:#fff;margin:0 16px 12px;border-radius:18px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.07);border:1px solid #efefef;cursor:pointer;}
+  .meal-card-img{width:100%;height:160px;object-fit:cover;background:#f7f7f7;display:flex;align-items:center;justify-content:center;font-size:14px;color:#ccc;font-weight:600;}
+  .meal-card-img img{width:100%;height:160px;object-fit:cover;}
+  .meal-card-body{padding:14px 16px;}
+  .meal-card-title{font-size:16px;font-weight:700;margin-bottom:4px;}
+  .meal-card-meta{display:flex;justify-content:space-between;align-items:center;}
+  .meal-card-items{font-size:13px;color:#aaa;}
+  .meal-card-cals{font-size:22px;font-weight:800;}
+  .meal-card-time{font-size:12px;color:#bbb;margin-top:4px;}
+  .meal-card-tap{font-size:12px;color:#007aff;margin-top:6px;font-weight:500;}
+
+  /* EXERCISE ITEMS */
   .ex-item{background:#fff;margin:0 16px 8px;border-radius:16px;padding:14px 16px;box-shadow:0 2px 8px rgba(0,0,0,0.06);border:1px solid #efefef;display:flex;justify-content:space-between;align-items:center;}
 
-  /* Bottom nav - NOT fixed, sits at bottom of page */
+  /* STEPS DISPLAY */
+  .steps-card{background:#fff;margin:0 16px 14px;border-radius:18px;padding:14px 16px;box-shadow:0 2px 10px rgba(0,0,0,0.07);border:1px solid #efefef;display:flex;justify-content:space-between;align-items:center;cursor:pointer;}
+  .steps-info{}
+  .steps-val{font-size:24px;font-weight:800;}
+  .steps-label{font-size:12px;color:#aaa;margin-top:2px;}
+  .steps-cal{font-size:14px;color:#34c759;font-weight:700;margin-top:4px;}
+
+  /* BOTTOM NAV */
   .bottom-nav{background:#fff;border-top:1px solid #efefef;display:flex;padding:14px 0 28px;margin-top:30px;}
   .nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;background:none;border:none;}
   .nav-txt{font-size:11px;font-weight:700;color:#bbb;letter-spacing:0.3px;}
-  .nav-sub{font-size:10px;color:#bbb;font-weight:400;}
+  .nav-sub{font-size:10px;color:#bbb;}
   .nav-item.active .nav-txt,.nav-item.active .nav-sub{color:#000;}
 
+  /* MEAL DETAIL SCREEN */
+  .detail-header{background:#fff;padding:56px 20px 14px;border-bottom:1px solid #efefef;display:flex;align-items:center;gap:12px;}
+  .back-btn{background:none;border:none;font-size:16px;color:#007aff;cursor:pointer;font-weight:600;padding:0;}
+  .detail-title{font-size:18px;font-weight:700;flex:1;}
+  .detail-img{width:100%;max-height:240px;object-fit:cover;background:#f7f7f7;}
+  .detail-summary{padding:16px 20px;background:#fff;border-bottom:1px solid #efefef;}
+  .detail-summary-title{font-size:16px;font-weight:600;color:#555;margin-bottom:4px;}
+  .detail-total{font-size:36px;font-weight:800;}
+  .detail-total-label{font-size:14px;color:#aaa;}
+  .detail-items{padding:16px 0;}
+  .detail-item{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid #f5f5f5;}
+  .detail-item-name{font-size:15px;font-weight:600;flex:1;}
+  .detail-item-cal{font-size:15px;font-weight:700;color:#007aff;margin-right:12px;}
+  .detail-item-edit{background:#f2f2f7;border:none;border-radius:8px;padding:5px 12px;font-size:12px;color:#007aff;font-weight:600;cursor:pointer;}
+  .fix-ai-btn{margin:16px;width:calc(100% - 32px);background:#000;border:none;border-radius:16px;padding:18px;font-size:16px;font-weight:700;color:#fff;cursor:pointer;}
+  .save-btn{margin:8px 16px 16px;width:calc(100% - 32px);background:#34c759;border:none;border-radius:16px;padding:18px;font-size:16px;font-weight:700;color:#fff;cursor:pointer;}
+
+  /* FIX WITH AI PANEL */
+  .fix-panel{background:#f2f2f7;margin:0 16px;border-radius:16px;padding:16px;margin-bottom:16px;}
+  .fix-panel-title{font-size:14px;font-weight:700;margin-bottom:10px;color:#555;}
+  .fix-input{width:100%;background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:12px;font-size:15px;outline:none;color:#000;margin-bottom:10px;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;}
+  .fix-btns{display:flex;gap:8px;}
+  .fix-voice-btn{flex:1;background:#ff3b30;border:none;border-radius:12px;padding:12px;font-size:14px;font-weight:700;color:#fff;cursor:pointer;}
+  .fix-voice-btn.listening{background:#ff3b30;}
+  .fix-submit-btn{flex:2;background:#007aff;border:none;border-radius:12px;padding:12px;font-size:14px;font-weight:700;color:#fff;cursor:pointer;}
+
+  /* MODALS */
   .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:300;display:flex;align-items:flex-end;}
   .modal{background:#fff;border-radius:26px 26px 0 0;padding:26px 20px 44px;width:100%;}
   .modal-title{font-size:18px;font-weight:700;margin-bottom:16px;text-align:center;}
@@ -97,9 +136,6 @@
   .modal-btns{display:flex;gap:10px;margin-top:6px;}
   .modal-cancel{flex:1;background:#f2f2f7;border:none;border-radius:14px;padding:15px;font-size:16px;font-weight:600;color:#aaa;cursor:pointer;}
   .modal-confirm{flex:2;background:#000;border:none;border-radius:14px;padding:15px;font-size:16px;font-weight:700;color:#fff;cursor:pointer;}
-
-  /* Voice transcript modal */
-  .modal textarea{width:100%;background:#f2f2f7;border:none;border-radius:14px;padding:15px;font-size:16px;margin-bottom:10px;outline:none;color:#000;resize:none;min-height:80px;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;}
 
   .setup-card{background:#fff;margin:16px;border-radius:20px;padding:22px;box-shadow:0 2px 14px rgba(0,0,0,0.07);border:1px solid #efefef;}
   .setup-title{font-size:18px;font-weight:700;margin-bottom:8px;}
@@ -115,23 +151,17 @@
   .history-date{font-size:16px;font-weight:700;}
   .history-net{font-size:22px;font-weight:800;}
   .history-meta{font-size:12px;color:#bbb;margin-top:2px;}
-  .history-item{display:flex;justify-content:space-between;font-size:13px;color:#aaa;padding:4px 0;border-top:1px solid #f5f5f5;}
+  .history-item-row{display:flex;justify-content:space-between;font-size:13px;color:#aaa;padding:4px 0;border-top:1px solid #f5f5f5;}
   .history-item-cal{color:#000;font-weight:600;}
+
   .hidden{display:none!important;}
 </style>
 </head>
 <body>
-<div id="app">
+
 <div class="toast hidden" id="toast"></div>
 
 <!-- MODALS -->
-<div class="modal-overlay hidden" id="editModal">
-  <div class="modal"><div class="modal-title">Edit Calories</div>
-    <input type="number" id="editInput" placeholder="Calories" inputmode="numeric">
-    <div class="modal-btns"><button class="modal-cancel" onclick="closeEditModal()">Cancel</button><button class="modal-confirm" onclick="saveEditModal()">Save</button></div>
-  </div>
-</div>
-
 <div class="modal-overlay hidden" id="exModal">
   <div class="modal"><div class="modal-title">Log Exercise</div>
     <input type="text" id="exNameInput" placeholder="Activity (e.g. OrangeTheory)">
@@ -139,51 +169,57 @@
     <div class="modal-btns"><button class="modal-cancel" onclick="closeExModal()">Cancel</button><button class="modal-confirm" onclick="saveExercise()">Add</button></div>
   </div>
 </div>
-
 <div class="modal-overlay hidden" id="stepsModal">
   <div class="modal"><div class="modal-title">Log Steps</div>
     <input type="number" id="stepsInput" placeholder="Number of steps" inputmode="numeric">
     <div class="modal-btns"><button class="modal-cancel" onclick="closeStepsModal()">Cancel</button><button class="modal-confirm" onclick="saveSteps()">Save</button></div>
   </div>
 </div>
-
 <div class="modal-overlay hidden" id="goalModal">
   <div class="modal"><div class="modal-title">Daily Calorie Goal</div>
     <input type="number" id="goalInput" placeholder="e.g. 1800" inputmode="numeric">
     <div class="modal-btns"><button class="modal-cancel" onclick="closeGoalModal()">Cancel</button><button class="modal-confirm" onclick="saveGoal()">Save</button></div>
   </div>
 </div>
-
 <div class="modal-overlay hidden" id="typeModal">
   <div class="modal"><div class="modal-title">What did you eat?</div>
     <input type="text" id="typeInput" placeholder="e.g. 2 scrambled eggs and toast">
     <div class="modal-btns"><button class="modal-cancel" onclick="closeTypeModal()">Cancel</button><button class="modal-confirm" onclick="submitTextLog()">Log It</button></div>
   </div>
 </div>
-
-<!-- Voice transcript modal - same as type but pre-filled -->
-<div class="modal-overlay hidden" id="voiceModal">
-  <div class="modal">
-    <div class="modal-title">Confirm Voice Log</div>
-    <textarea id="voiceTranscript" placeholder="What you said..."></textarea>
-    <div class="modal-btns"><button class="modal-cancel" onclick="closeVoiceModal()">Cancel</button><button class="modal-confirm" onclick="submitVoiceLog()">Log It</button></div>
+<div class="modal-overlay hidden" id="itemEditModal">
+  <div class="modal"><div class="modal-title" id="itemEditTitle">Edit Calories</div>
+    <input type="number" id="itemEditInput" placeholder="Calories" inputmode="numeric">
+    <div class="modal-btns"><button class="modal-cancel" onclick="closeItemEdit()">Cancel</button><button class="modal-confirm" onclick="saveItemEdit()">Save</button></div>
   </div>
 </div>
 
 <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event,'food')">
+<input type="file" id="photoLibraryInput" accept="image/*" style="display:none" onchange="handlePhoto(event,'food')">
 <input type="file" id="barcodeInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event,'barcode')">
 
-<!-- HEADER - scrolls away -->
-<div class="header">
-  <div class="header-top">
-    <div class="app-title">Calories</div>
-    <div class="streak-badge">🔥 <span id="streakCount">0</span> day streak</div>
+<!-- Photo picker modal -->
+<div class="modal-overlay hidden" id="photoPickerModal">
+  <div class="modal">
+    <div class="modal-title">Add Food Photo</div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;">
+      <button onclick="closePhotoPicker();setTimeout(()=>document.getElementById('photoInput').click(),100);" style="background:#000;border:none;border-radius:14px;padding:16px;font-size:16px;font-weight:700;color:#fff;cursor:pointer;">📷 Take Photo</button>
+      <button onclick="closePhotoPicker();setTimeout(()=>document.getElementById('photoLibraryInput').click(),100);" style="background:#f2f2f7;border:none;border-radius:14px;padding:16px;font-size:16px;font-weight:700;color:#000;cursor:pointer;">🖼 Choose from Library</button>
+    </div>
+    <button class="modal-cancel" style="width:100%" onclick="closePhotoPicker()">Cancel</button>
   </div>
-  <div class="week-strip" id="weekStrip"></div>
 </div>
 
-<!-- TODAY -->
-<div id="todayTab" class="content">
+<!-- ═══════════════ HOME SCREEN ═══════════════ -->
+<div class="screen active" id="homeScreen">
+  <div class="header">
+    <div class="header-top">
+      <div class="app-title">Calories</div>
+      <div class="streak-badge">🔥 <span id="streakCount">0</span> day streak</div>
+    </div>
+    <div class="week-strip" id="weekStrip"></div>
+  </div>
+
   <div class="main-card">
     <div class="cal-row">
       <div>
@@ -205,7 +241,7 @@
   </div>
 
   <div class="log-btns">
-    <button class="log-btn photo" onclick="checkKeyThen(()=>document.getElementById('photoInput').click())">
+    <button class="log-btn photo" onclick="checkKeyThen(openPhotoPicker)">
       <div class="log-btn-label">Photo</div>
       <div class="log-btn-sub">Snap your food</div>
     </button>
@@ -226,82 +262,169 @@
     </button>
   </div>
 
+  <!-- Stat cards -->
   <div class="stat-cards">
     <div class="stat-card" onclick="openExModal()">
       <div class="stat-lbl">Exercise</div>
       <div class="stat-val" id="exTotal">0 cal</div>
       <div class="stat-act">+ Add</div>
     </div>
-    <div class="stat-card" onclick="openStepsModal()">
+    <div class="stat-card" onclick="requestHealthSteps()">
       <div class="stat-lbl">Steps</div>
-      <div class="stat-val" id="stepsTotal">—</div>
-      <div class="stat-act">+ Edit</div>
+      <div class="stat-val" id="stepsVal">—</div>
+      <div class="stat-act" id="stepsAct">Tap to sync</div>
     </div>
     <div class="stat-card">
       <div class="stat-lbl">Net Cal</div>
       <div class="stat-val" id="netTotal">0</div>
-      <div class="stat-act" style="color:#bbb">eaten − burned</div>
+      <div class="stat-act" style="color:#bbb">eaten−burned</div>
     </div>
   </div>
 
   <div class="analyzing-bar hidden" id="analyzingBar">Analyzing your food...</div>
-  <div id="foodSectionTitle"></div>
-  <div id="foodLog"></div>
+
+  <!-- Meal log -->
+  <div id="mealSectionTitle"></div>
+  <div id="mealLog"></div>
+
+  <!-- Exercise log -->
   <div id="exLog"></div>
-</div>
 
-<!-- HISTORY -->
-<div id="historyTab" class="content hidden">
-  <div class="section-title" style="padding-top:16px">History</div>
-  <div id="historyList"></div>
-</div>
-
-<!-- SETTINGS -->
-<div id="settingsTab" class="content hidden">
-  <div class="setup-card" style="margin-top:16px">
-    <div class="setup-title">Settings</div>
-    <div class="setup-desc">Paste your OpenAI API key from <strong>platform.openai.com</strong>. Photos are compressed before sending — each photo costs about $0.001.</div>
-    <input type="password" class="setup-input" id="apiKeyInput" placeholder="sk-...">
-    <button class="setup-save" onclick="saveApiKey()">Save Key</button>
+  <div class="bottom-nav">
+    <button class="nav-item active" id="navToday" onclick="switchTab('today')"><div class="nav-txt">TODAY</div><div class="nav-sub">Today</div></button>
+    <button class="nav-item" id="navHistory" onclick="switchTab('history')"><div class="nav-txt">HISTORY</div><div class="nav-sub">History</div></button>
+    <button class="nav-item" id="navSettings" onclick="switchTab('settings')"><div class="nav-txt">SETTINGS</div><div class="nav-sub">Settings</div></button>
   </div>
 </div>
 
-<!-- BOTTOM NAV - scrolls with page -->
-<div class="bottom-nav">
-  <button class="nav-item active" id="navToday" onclick="switchTab('today')"><div class="nav-txt">TODAY</div><div class="nav-sub">Today</div></button>
-  <button class="nav-item" id="navHistory" onclick="switchTab('history')"><div class="nav-txt">HISTORY</div><div class="nav-sub">History</div></button>
-  <button class="nav-item" id="navSettings" onclick="switchTab('settings')"><div class="nav-txt">SETTINGS</div><div class="nav-sub">Settings</div></button>
+<!-- ═══════════════ HISTORY SCREEN ═══════════════ -->
+<div class="screen" id="historyScreen">
+  <div class="header" style="padding-top:56px;">
+    <div class="header-top"><div class="app-title">History</div></div>
+  </div>
+  <div id="historyList"></div>
+  <div class="bottom-nav">
+    <button class="nav-item" id="navToday2" onclick="switchTab('today')"><div class="nav-txt">TODAY</div><div class="nav-sub">Today</div></button>
+    <button class="nav-item active" id="navHistory2" onclick="switchTab('history')"><div class="nav-txt">HISTORY</div><div class="nav-sub">History</div></button>
+    <button class="nav-item" id="navSettings2" onclick="switchTab('settings')"><div class="nav-txt">SETTINGS</div><div class="nav-sub">Settings</div></button>
+  </div>
 </div>
+
+<!-- ═══════════════ SETTINGS SCREEN ═══════════════ -->
+<div class="screen" id="settingsScreen">
+  <div class="header" style="padding-top:56px;">
+    <div class="header-top"><div class="app-title">Settings</div></div>
+  </div>
+  <div class="setup-card" style="margin-top:16px">
+    <div class="setup-title">OpenAI API Key</div>
+    <div class="setup-desc">Paste your key from <strong>platform.openai.com</strong>. Photos are compressed before sending — each costs about $0.001.</div>
+    <input type="password" class="setup-input" id="apiKeyInput" placeholder="sk-...">
+    <button class="setup-save" onclick="saveApiKey()">Save Key</button>
+  </div>
+  <div class="setup-card" style="margin-top:12px">
+    <div class="setup-title">Daily Calorie Goal</div>
+    <div class="setup-desc">Your base goal before exercise.</div>
+    <input type="number" class="setup-input" id="goalSettingInput" placeholder="e.g. 1800" inputmode="numeric">
+    <button class="setup-save" onclick="saveGoalFromSettings()">Save Goal</button>
+  </div>
+  <div class="bottom-nav">
+    <button class="nav-item" onclick="switchTab('today')"><div class="nav-txt">TODAY</div><div class="nav-sub">Today</div></button>
+    <button class="nav-item" onclick="switchTab('history')"><div class="nav-txt">HISTORY</div><div class="nav-sub">History</div></button>
+    <button class="nav-item active"><div class="nav-txt">SETTINGS</div><div class="nav-sub">Settings</div></button>
+  </div>
+</div>
+
+<!-- ═══════════════ MEAL DETAIL SCREEN ═══════════════ -->
+<div class="screen" id="detailScreen">
+  <div class="detail-header">
+    <button class="back-btn" onclick="goBack()">← Back</button>
+    <div class="detail-title" id="detailTitle">Meal</div>
+  </div>
+  <div id="detailImg"></div>
+  <div class="detail-summary">
+    <div class="detail-summary-title" id="detailDesc">Meal</div>
+    <div style="display:flex;align-items:baseline;gap:4px;margin-top:4px;">
+      <div class="detail-total" id="detailTotal">0</div>
+      <div class="detail-total-label">total calories</div>
+    </div>
+  </div>
+  <div class="detail-items" id="detailItems"></div>
+
+  <!-- Fix with AI -->
+  <button class="fix-ai-btn" onclick="toggleFixPanel()">✦ Fix with AI</button>
+  <div class="fix-panel hidden" id="fixPanel">
+    <div class="fix-panel-title">Tell the AI what to fix:</div>
+    <textarea class="fix-input" id="fixInput" rows="3" placeholder="e.g. It was 3 eggs not 2, and 4 slices of ham"></textarea>
+    <div class="fix-btns">
+      <button class="fix-voice-btn" id="fixVoiceBtn" onclick="startFixVoice()">🎤 Voice</button>
+      <button class="fix-submit-btn" onclick="submitFix()">Analyze & Fix</button>
+    </div>
+  </div>
+
+  <button class="save-btn" onclick="goBack()">✓ Save & Go Back</button>
 </div>
 
 <script>
-const STORE_KEY='cal-v11',API_STORE='cal-oai-key',LAST_EX_KEY='cal-last-ex';
+const STORE_KEY='cal-v13',API_STORE='cal-oai-key',LAST_EX_KEY='cal-last-ex',BARCODE_KEY='cal-barcodes';
 let apiKey=localStorage.getItem(API_STORE)||'';
 let goal=parseInt(localStorage.getItem('cal-goal')||'1800');
 let logs={};try{logs=JSON.parse(localStorage.getItem(STORE_KEY)||'{}');}catch{}
-let editingId=null,isRecording=false,recognition=null;
+let barcodeMemory={};try{barcodeMemory=JSON.parse(localStorage.getItem(BARCODE_KEY)||'{}');}catch{}
+let currentMealId=null,editingItemIdx=null,isRecording=false,isFixRecording=false,recognition=null,fixRecognition=null;
 
+// ─── HELPERS ──────────────────────────────────────────────
 function todayKey(){return new Date().toISOString().split('T')[0];}
-function getTodayData(){return logs[todayKey()]||{items:[],steps:null,exercise:[]};}
+function getTodayData(){return logs[todayKey()]||{meals:[],steps:null,exercise:[]};}
 function saveLogs(){localStorage.setItem(STORE_KEY,JSON.stringify(logs));}
-function updateTodayData(fn){const k=todayKey();logs[k]=fn(logs[k]||{items:[],steps:null,exercise:[]});saveLogs();render();}
+function updateTodayData(fn){const k=todayKey();logs[k]=fn(logs[k]||{meals:[],steps:null,exercise:[]});saveLogs();renderHome();}
 function showToast(msg,dur=5000){const t=document.getElementById('toast');t.textContent=msg;t.classList.remove('hidden');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.add('hidden'),dur);}
 function checkKeyThen(fn){if(!apiKey){showToast('Add your OpenAI key in Settings first');switchTab('settings');return;}fn();}
+function timeLabel(){const n=new Date();let h=n.getHours(),m=n.getMinutes(),ap=h>=12?'PM':'AM';h=h%12||12;return`${h}:${m.toString().padStart(2,'0')} ${ap}`;}
+function saveBarcodes(){localStorage.setItem(BARCODE_KEY,JSON.stringify(barcodeMemory));}
 
-function switchTab(tab){
-  ['today','history','settings'].forEach(t=>document.getElementById(t+'Tab').classList.toggle('hidden',t!==tab));
-  ['navToday','navHistory','navSettings'].forEach(id=>document.getElementById(id).classList.remove('active'));
-  document.getElementById({today:'navToday',history:'navHistory',settings:'navSettings'}[tab]).classList.add('active');
+// ─── TABS / SCREENS ───────────────────────────────────────
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
   window.scrollTo(0,0);
-  if(tab==='history')renderHistory();
-  if(tab==='settings')document.getElementById('apiKeyInput').value=apiKey;
 }
+function switchTab(tab){
+  if(tab==='today'){showScreen('homeScreen');renderHome();}
+  else if(tab==='history'){showScreen('historyScreen');renderHistory();}
+  else if(tab==='settings'){showScreen('settingsScreen');document.getElementById('apiKeyInput').value=apiKey;document.getElementById('goalSettingInput').value=goal;}
+}
+function goBack(){showScreen('homeScreen');renderHome();}
 
-function saveApiKey(){apiKey=document.getElementById('apiKeyInput').value.trim();localStorage.setItem(API_STORE,apiKey);showToast('API key saved!');switchTab('today');}
+// ─── API KEY / GOAL ───────────────────────────────────────
+function saveApiKey(){apiKey=document.getElementById('apiKeyInput').value.trim();localStorage.setItem(API_STORE,apiKey);showToast('✅ API key saved!');switchTab('today');}
 function openGoalModal(){document.getElementById('goalInput').value=goal;document.getElementById('goalModal').classList.remove('hidden');}
 function closeGoalModal(){document.getElementById('goalModal').classList.add('hidden');}
-function saveGoal(){const v=parseInt(document.getElementById('goalInput').value);if(!isNaN(v)&&v>0){goal=v;localStorage.setItem('cal-goal',v);render();}closeGoalModal();}
+function saveGoal(){const v=parseInt(document.getElementById('goalInput').value);if(!isNaN(v)&&v>0){goal=v;localStorage.setItem('cal-goal',v);renderHome();}closeGoalModal();}
+function saveGoalFromSettings(){const v=parseInt(document.getElementById('goalSettingInput').value);if(!isNaN(v)&&v>0){goal=v;localStorage.setItem('cal-goal',v);showToast('✅ Goal saved!');}}
 
+// ─── APPLE HEALTH STEPS ───────────────────────────────────
+function requestHealthSteps(){
+  // Try Apple Health via DeviceMotion/webkit bridge — fallback to manual entry
+  if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.getSteps){
+    window.webkit.messageHandlers.getSteps.postMessage({});
+    showToast('Requesting steps from Health app...',3000);
+  } else {
+    // Fallback: manual entry
+    openStepsModal();
+  }
+}
+// Called by native bridge if available
+window.receiveSteps=function(steps){
+  updateTodayData(d=>({...d,steps:parseInt(steps)||0}));
+  showToast(`✅ Steps synced: ${parseInt(steps).toLocaleString()}`,4000);
+};
+
+function estimateStepCalories(steps){
+  // ~0.04 cal per step (average)
+  return Math.round((steps||0)*0.04);
+}
+
+// ─── WEEK STRIP ───────────────────────────────────────────
 function renderWeekStrip(){
   const strip=document.getElementById('weekStrip'),today=new Date(),days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const sow=new Date(today);sow.setDate(today.getDate()-today.getDay()+1);
@@ -311,55 +434,81 @@ function renderWeekStrip(){
     const key=d.toISOString().split('T')[0],isToday=key===todayKey(),dl=logs[key];
     let cls='day-circle';
     if(isToday)cls+=' today';
-    else if(dl&&dl.items&&dl.items.length){
-      const f=dl.items.reduce((s,x)=>s+(x.calories||0),0),e=(dl.exercise||[]).reduce((s,x)=>s+(x.calories||0),0),n=f-e;
-      const g=parseInt(localStorage.getItem('cal-goal')||'1800');
+    else if(dl&&dl.meals&&dl.meals.length){
+      const f=dl.meals.reduce((s,m)=>s+m.items.reduce((ss,i)=>ss+(i.calories||0),0),0);
+      const e=(dl.exercise||[]).reduce((s,e)=>s+(e.calories||0),0);
+      const n=f-e,g=parseInt(localStorage.getItem('cal-goal')||'1800');
       cls+=n>g?' over':n>g*.85?' warn':' good';
     }
     strip.innerHTML+=`<div class="day-item"><div class="day-label">${days[d.getDay()]}</div><div class="${cls}">${d.getDate()}</div></div>`;
   }
 }
+function calcStreak(){let s=0;const t=new Date();for(let i=0;i<365;i++){const d=new Date(t);d.setDate(t.getDate()-i);const k=d.toISOString().split('T')[0];if(logs[k]&&logs[k].meals&&logs[k].meals.length>0)s++;else if(i>0)break;}return s;}
 
-function calcStreak(){let s=0;const t=new Date();for(let i=0;i<365;i++){const d=new Date(t);d.setDate(t.getDate()-i);const k=d.toISOString().split('T')[0];if(logs[k]&&logs[k].items&&logs[k].items.length>0)s++;else if(i>0)break;}return s;}
-function timeLabel(){const n=new Date();let h=n.getHours(),m=n.getMinutes(),ap=h>=12?'PM':'AM';h=h%12||12;return`${h}:${m.toString().padStart(2,'0')} ${ap}`;}
-
-function render(){
+// ─── RENDER HOME ──────────────────────────────────────────
+function renderHome(){
   const data=getTodayData();
-  const food=data.items.reduce((s,i)=>s+(i.calories||0),0);
-  const ex=(data.exercise||[]).reduce((s,e)=>s+(e.calories||0),0);
-  // Effective goal = base goal + exercise burned
-  const effectiveGoal=goal+ex;
-  const net=food-ex,pct=Math.min(food/effectiveGoal,1);
-  document.getElementById('mainCalNumber').textContent=food.toLocaleString();
+  const foodCals=data.meals.reduce((s,m)=>s+m.items.reduce((ss,i)=>ss+(i.calories||0),0),0);
+  const exCals=(data.exercise||[]).reduce((s,e)=>s+(e.calories||0),0);
+  const stepCals=estimateStepCalories(data.steps);
+  const totalBurned=exCals+stepCals;
+  const effectiveGoal=goal+totalBurned;
+  const net=foodCals-totalBurned;
+  const pct=Math.min(foodCals/effectiveGoal,1);
+
+  document.getElementById('mainCalNumber').textContent=foodCals.toLocaleString();
   document.getElementById('goalNum').textContent=effectiveGoal.toLocaleString();
-  document.getElementById('netLabel').textContent=ex>0?`Base goal ${goal.toLocaleString()} + ${ex.toLocaleString()} burned = ${effectiveGoal.toLocaleString()}`:'';
-  document.getElementById('exTotal').textContent=`${ex} cal`;
-  document.getElementById('stepsTotal').textContent=data.steps?data.steps.toLocaleString():'—';
   document.getElementById('netTotal').textContent=net.toLocaleString();
+  document.getElementById('exTotal').textContent=`${exCals} cal`;
   document.getElementById('ringPct').textContent=Math.round(pct*100)+'%';
   document.getElementById('progressRing').setAttribute('stroke-dashoffset',219.9-pct*219.9);
-  document.getElementById('progressRing').setAttribute('stroke',food>effectiveGoal?'#ff3b30':'#000');
+  document.getElementById('progressRing').setAttribute('stroke',foodCals>effectiveGoal?'#ff3b30':'#000');
   document.getElementById('streakCount').textContent=calcStreak();
-  renderWeekStrip();renderFoodLog(data);renderExLog(data);
+
+  // Steps display
+  if(data.steps){
+    document.getElementById('stepsVal').textContent=data.steps.toLocaleString();
+    document.getElementById('stepsAct').textContent=`~${stepCals} cal burned`;
+    document.getElementById('stepsAct').style.color='#34c759';
+  } else {
+    document.getElementById('stepsVal').textContent='—';
+    document.getElementById('stepsAct').textContent='Tap to sync';
+    document.getElementById('stepsAct').style.color='#007aff';
+  }
+
+  // Net label
+  let netParts=[];
+  if(exCals>0)netParts.push(`${exCals} ex`);
+  if(stepCals>0&&data.steps)netParts.push(`${stepCals} steps`);
+  document.getElementById('netLabel').textContent=netParts.length>0?`Base ${goal.toLocaleString()} + ${netParts.join(' + ')} = ${effectiveGoal.toLocaleString()} goal`:'';
+
+  renderWeekStrip();
+  renderMealLog(data);
+  renderExLog(data);
 }
 
-function renderFoodLog(data){
-  const c=document.getElementById('foodLog'),t=document.getElementById('foodSectionTitle');
-  if(!data.items.length){c.innerHTML='';t.innerHTML='';return;}
-  t.innerHTML='<div class="section-title">Recently logged</div>';
-  c.innerHTML=[...data.items].reverse().map(item=>`
-    <div class="food-card">
-      <div class="food-thumb">${item.imageData?`<img src="${item.imageData}">`:`<div class="food-thumb-placeholder">${item.source==='voice'?'Voice':item.source==='barcode'?'Scan':'Text'}</div>`}</div>
-      <div class="food-info">
-        <div class="food-name-row"><div class="food-name">${item.name}</div><div class="food-time">${item.time||''}</div></div>
-        <div class="food-cals">${item.calories}<span class="food-cal-label">cal</span></div>
-        ${item.notes?`<div class="food-notes">${item.notes}</div>`:''}
-        <div class="food-actions">
-          <button class="edit-btn" onclick="openEditModal('${item.id}',${item.calories})">Edit</button>
-          <button class="del-btn" onclick="deleteItem('${item.id}')">Remove</button>
+function renderMealLog(data){
+  const c=document.getElementById('mealLog'),t=document.getElementById('mealSectionTitle');
+  if(!data.meals||!data.meals.length){c.innerHTML='';t.innerHTML='';return;}
+  t.innerHTML='<div class="section-title">Today\'s Meals</div>';
+  c.innerHTML=[...data.meals].reverse().map(meal=>{
+    const total=meal.items.reduce((s,i)=>s+(i.calories||0),0);
+    const desc=meal.items.length>1?meal.items.slice(0,2).map(i=>i.name).join(', ')+(meal.items.length>2?'...':''):meal.items[0]?.name||'Meal';
+    return`<div class="meal-card" onclick="openMealDetail('${meal.id}')">
+      ${meal.imageData?`<div class="meal-card-img"><img src="${meal.imageData}" alt="meal"></div>`:''}
+      <div class="meal-card-body">
+        <div class="meal-card-meta">
+          <div>
+            <div class="meal-card-title">${meal.title||desc}</div>
+            <div class="meal-card-items">${meal.items.length} item${meal.items.length!==1?'s':''}</div>
+            <div class="meal-card-time">${meal.time||''}</div>
+          </div>
+          <div class="meal-card-cals">${total.toLocaleString()}<span style="font-size:13px;font-weight:400;color:#aaa"> cal</span></div>
         </div>
+        <div class="meal-card-tap">Tap to view & edit →</div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function renderExLog(data){
@@ -369,51 +518,114 @@ function renderExLog(data){
     <div class="ex-item">
       <div style="font-size:15px;font-weight:600">${ex.label}</div>
       <div style="display:flex;align-items:center;gap:10px">
-        <div style="font-size:15px;color:#007aff;font-weight:700">+${ex.calories} cal goal</div>
+        <div style="font-size:15px;color:#34c759;font-weight:700">+${ex.calories} to goal</div>
         <button onclick="deleteExercise('${ex.id}')" style="background:none;border:none;color:#ff3b30;font-size:22px;cursor:pointer;line-height:1">×</button>
       </div>
     </div>`).join('');
 }
 
-function renderHistory(){
-  const list=document.getElementById('historyList'),today=todayKey();
-  const days=Object.keys(logs).filter(k=>k!==today).sort().reverse().slice(0,30);
-  if(!days.length){list.innerHTML='<div style="text-align:center;padding:40px;color:#bbb;font-size:15px">No history yet!</div>';return;}
-  list.innerHTML=days.map(day=>{
-    const d=logs[day],food=d.items.reduce((s,i)=>s+(i.calories||0),0),ex=(d.exercise||[]).reduce((s,e)=>s+(e.calories||0),0),net=food-ex;
-    const date=new Date(day+'T12:00:00'),ds=date.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-    return`<div class="history-day">
-      <div class="history-day-header">
-        <div><div class="history-date">${ds}</div><div class="history-meta">${d.items.length} item${d.items.length!==1?'s':''}${d.steps?` · ${d.steps.toLocaleString()} steps`:''}</div></div>
-        <div style="text-align:right"><div class="history-net">${net.toLocaleString()}</div><div class="history-meta">net cal${ex>0?` · ${ex} burned`:''}</div></div>
+// ─── MEAL DETAIL ──────────────────────────────────────────
+function openMealDetail(mealId){
+  currentMealId=mealId;
+  const data=getTodayData();
+  const meal=data.meals.find(m=>m.id===mealId);
+  if(!meal)return;
+  renderDetailScreen(meal);
+  showScreen('detailScreen');
+}
+
+function renderDetailScreen(meal){
+  const total=meal.items.reduce((s,i)=>s+(i.calories||0),0);
+  document.getElementById('detailTitle').textContent=meal.time||'Meal';
+  document.getElementById('detailDesc').textContent=meal.title||meal.items.map(i=>i.name).join(', ');
+  document.getElementById('detailTotal').textContent=total.toLocaleString();
+  document.getElementById('detailImg').innerHTML=meal.imageData
+    ?`<img class="detail-img" src="${meal.imageData}" alt="meal">`
+    :'';
+  document.getElementById('detailItems').innerHTML=meal.items.map((item,idx)=>`
+    <div class="detail-item">
+      <div class="detail-item-name">${item.name}</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="detail-item-cal">${item.calories} cal</div>
+        <button class="detail-item-edit" onclick="openItemEdit(${idx},'${item.name}',${item.calories})">Edit</button>
       </div>
-      ${d.items.map(i=>`<div class="history-item"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%">${i.name}</span><span class="history-item-cal">${i.calories} cal</span></div>`).join('')}
-    </div>`;
-  }).join('');
+    </div>`).join('');
+  document.getElementById('fixPanel').classList.add('hidden');
+  document.getElementById('fixInput').value='';
 }
 
-// Compress image to 512px, 0.6 quality - reduces tokens by ~90%
-function compressImage(file){
-  return new Promise(resolve=>{
-    const reader=new FileReader();
-    reader.onload=e=>{
-      const img=new Image();
-      img.onload=()=>{
-        const MAX=512;
-        let w=img.width,h=img.height;
-        if(w>h){if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}}
-        else{if(h>MAX){w=Math.round(w*MAX/h);h=MAX;}}
-        const canvas=document.createElement('canvas');
-        canvas.width=w;canvas.height=h;
-        canvas.getContext('2d').drawImage(img,0,0,w,h);
-        resolve(canvas.toDataURL('image/jpeg',0.6));
-      };
-      img.src=e.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
+function openItemEdit(idx,name,cal){
+  editingItemIdx=idx;
+  document.getElementById('itemEditTitle').textContent='Edit: '+name;
+  document.getElementById('itemEditInput').value=cal;
+  document.getElementById('itemEditModal').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('itemEditInput').focus(),100);
+}
+function closeItemEdit(){document.getElementById('itemEditModal').classList.add('hidden');editingItemIdx=null;}
+function saveItemEdit(){
+  const v=parseInt(document.getElementById('itemEditInput').value);
+  if(isNaN(v))return;
+  const k=todayKey();
+  const meal=logs[k].meals.find(m=>m.id===currentMealId);
+  if(meal&&editingItemIdx!==null){
+    meal.items[editingItemIdx].calories=v;
+    saveLogs();
+    renderDetailScreen(meal);
+    showToast('✅ Updated!');
+  }
+  closeItemEdit();
+}
+document.getElementById('itemEditInput').addEventListener('keydown',e=>{if(e.key==='Enter')saveItemEdit();});
+
+// ─── FIX WITH AI ──────────────────────────────────────────
+function toggleFixPanel(){
+  const p=document.getElementById('fixPanel');
+  p.classList.toggle('hidden');
+  if(!p.classList.contains('hidden'))document.getElementById('fixInput').focus();
 }
 
+function startFixVoice(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){showToast('Voice not supported — type your correction');return;}
+  if(isFixRecording){fixRecognition?.stop();return;}
+  fixRecognition=new SR();fixRecognition.lang='en-US';
+  fixRecognition.onresult=(e)=>{
+    document.getElementById('fixInput').value=Array.from(e.results).map(r=>r[0].transcript).join(' ').trim();
+    isFixRecording=false;document.getElementById('fixVoiceBtn').textContent='🎤 Voice';
+  };
+  fixRecognition.onerror=()=>{isFixRecording=false;document.getElementById('fixVoiceBtn').textContent='🎤 Voice';};
+  fixRecognition.onend=()=>{isFixRecording=false;document.getElementById('fixVoiceBtn').textContent='🎤 Voice';};
+  fixRecognition.start();
+  isFixRecording=true;
+  document.getElementById('fixVoiceBtn').textContent='⏹ Stop';
+  showToast('Speak your correction...',3000);
+}
+
+async function submitFix(){
+  const correction=document.getElementById('fixInput').value.trim();
+  if(!correction){showToast('Tell the AI what to fix');return;}
+  const k=todayKey();
+  const meal=logs[k].meals.find(m=>m.id===currentMealId);
+  if(!meal)return;
+  showToast('Analyzing correction...');
+  document.getElementById('analyzingBar').classList.remove('hidden');
+  try{
+    const currentItems=JSON.stringify(meal.items.map(i=>({name:i.name,calories:i.calories})));
+    const text=await callGPT([{role:'user',content:`Current meal items: ${currentItems}. User correction: "${correction}". Update the meal items based on the correction. Return ONLY the updated JSON array: [{"name":"item","calories":number,"notes":"portion"}]. Keep items that weren't mentioned the same.`}],400);
+    const updated=JSON.parse(text.replace(/```json|```/g,'').trim());
+    meal.items=updated.map(i=>({...i,id:String(Date.now()+Math.random())}));
+    // Update title
+    meal.title=updated.slice(0,2).map(i=>i.name).join(', ')+(updated.length>2?'...':'');
+    saveLogs();
+    renderDetailScreen(meal);
+    document.getElementById('fixPanel').classList.add('hidden');
+    document.getElementById('fixInput').value='';
+    showToast('✅ Meal updated!',5000);
+  }catch(err){showToast('❌ '+(err.message||'Failed'),7000);}
+  document.getElementById('analyzingBar').classList.add('hidden');
+}
+
+// ─── GPT ──────────────────────────────────────────────────
 async function callGPT(messages,max_tokens=300){
   const resp=await fetch('https://api.openai.com/v1/chat/completions',{
     method:'POST',
@@ -425,100 +637,124 @@ async function callGPT(messages,max_tokens=300){
   return data.choices[0].message.content;
 }
 
+// ─── IMAGE COMPRESSION ────────────────────────────────────
+function compressImage(file){
+  return new Promise(resolve=>{
+    const reader=new FileReader();
+    reader.onload=e=>{
+      const img=new Image();
+      img.onload=()=>{
+        const MAX=512;let w=img.width,h=img.height;
+        if(w>h){if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}}else{if(h>MAX){w=Math.round(w*MAX/h);h=MAX;}}
+        const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+        canvas.getContext('2d').drawImage(img,0,0,w,h);
+        resolve(canvas.toDataURL('image/jpeg',0.6));
+      };
+      img.src=e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ─── PHOTO HANDLER ────────────────────────────────────────
 async function handlePhoto(event,mode){
   const file=event.target.files[0];if(!file)return;event.target.value='';
-  showToast('Analyzing...');
+  showToast('Analyzing your food...');
   document.getElementById('analyzingBar').classList.remove('hidden');
   try{
     const compressed=await compressImage(file);
     const b64=compressed.split(',')[1];
-    const prompt=mode==='barcode'
-      ?'Identify this food product and its calories per serving from the label. Return ONLY JSON: [{"name":"product","calories":number,"notes":"serving size"}].'
-      :'List each food item in this photo with calories. Return ONLY JSON: [{"name":"item","calories":number,"notes":"portion"}].';
-    const text=await callGPT([{role:'user',content:[
-      {type:'image_url',image_url:{url:`data:image/jpeg;base64,${b64}`,detail:'low'}},
-      {type:'text',text:prompt}
-    ]}],300);
-    const items=JSON.parse(text.replace(/```json|```/g,'').trim());
     const t=timeLabel();
-    updateTodayData(d=>({...d,items:[...d.items,...items.map(i=>({...i,id:String(Date.now()+Math.random()),source:mode==='barcode'?'barcode':'photo',time:t,imageData:compressed}))]}));
-    showToast('✅ Added: '+items.map(i=>i.name+' ('+i.calories+' cal)').join(', '),6000);
-  }catch(err){showToast('❌ '+(err.message||'Failed. Try again.'),7000);}
+
+    if(mode==='barcode'){
+      const nameText=await callGPT([{role:'user',content:[
+        {type:'image_url',image_url:{url:`data:image/jpeg;base64,${b64}`,detail:'low'}},
+        {type:'text',text:'What food product is in this image? Return JSON: {"name":"product name","barcode":"number or null"}'}
+      ]}],80);
+      let productName='Unknown product',barcodeId=null;
+      try{const p=JSON.parse(nameText.replace(/```json|```/g,'').trim());productName=p.name||productName;barcodeId=p.barcode||null;}catch{}
+      const memKey=barcodeId||productName.toLowerCase().replace(/\s+/g,'-');
+      let items;
+      if(barcodeMemory[memKey]){
+        const mem=barcodeMemory[memKey];
+        items=[{name:mem.name,calories:mem.calories,notes:'from your history',id:String(Date.now()),barcodeId:memKey}];
+        showToast(`✅ ${mem.name} (${mem.calories} cal) — from memory!`,5000);
+      } else {
+        const calText=await callGPT([{role:'user',content:`Food: "${productName}". Estimate calories per serving. Return ONLY JSON: [{"name":"${productName}","calories":number,"notes":"per serving"}]`}],100);
+        items=JSON.parse(calText.replace(/```json|```/g,'').trim()).map(i=>({...i,id:String(Date.now()+Math.random()),barcodeId:memKey}));
+        showToast(`✅ Added ${productName} — tap Edit on the detail screen to fix calories!`,7000);
+      }
+      const meal={id:String(Date.now()),items,imageData:compressed,time:t,title:productName,source:'barcode'};
+      updateTodayData(d=>({...d,meals:[...(d.meals||[]),meal]}));
+    } else {
+      // Food photo — analyze all items
+      const text=await callGPT([{role:'user',content:[
+        {type:'image_url',image_url:{url:`data:image/jpeg;base64,${b64}`,detail:'low'}},
+        {type:'text',text:'List each food item in this photo. For each item give a name and estimated calories. Return ONLY JSON: [{"name":"item name","calories":number,"notes":"portion size"}]. Be specific.'}
+      ]}],350);
+      const items=JSON.parse(text.replace(/```json|```/g,'').trim()).map(i=>({...i,id:String(Date.now()+Math.random())}));
+      const total=items.reduce((s,i)=>s+(i.calories||0),0);
+      const title=items.length===1?items[0].name:items.slice(0,2).map(i=>i.name).join(', ')+(items.length>2?'...':'');
+      const meal={id:String(Date.now()),items,imageData:compressed,time:t,title,source:'photo'};
+      updateTodayData(d=>({...d,meals:[...(d.meals||[]),meal]}));
+      showToast(`✅ ${items.length} items, ${total} cal total — tap to view details`,6000);
+    }
+  }catch(err){showToast('❌ '+(err.message||'Failed'),7000);}
   document.getElementById('analyzingBar').classList.add('hidden');
 }
 
-// VOICE - records, shows transcript in modal just like Type
+// ─── VOICE ────────────────────────────────────────────────
 function startVoice(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){showToast('Voice not supported — use Type instead');return;}
-  if(isRecording){showToast('Still listening — pause speaking and wait');return;}
-  recognition=new SR();
-  recognition.continuous=false;
-  recognition.interimResults=false;
-  recognition.lang='en-US';
-  recognition.onresult=(e)=>{
+  if(isRecording){showToast('Already listening — pause speaking');return;}
+  recognition=new SR();recognition.continuous=false;recognition.interimResults=false;recognition.lang='en-US';
+  recognition.onresult=async(e)=>{
     const transcript=Array.from(e.results).map(r=>r[0].transcript).join(' ').trim();
     isRecording=false;resetVoiceBtn();
     if(!transcript){showToast('Nothing heard — try again');return;}
-    // Show transcript in modal so user can edit before submitting — same as Type
-    document.getElementById('voiceTranscript').value=transcript;
-    document.getElementById('voiceModal').classList.remove('hidden');
+    await processTextLog(transcript,'voice');
   };
   recognition.onerror=(e)=>{isRecording=false;resetVoiceBtn();showToast('Mic error: '+e.error,7000);};
   recognition.onend=()=>{isRecording=false;resetVoiceBtn();};
-  recognition.start();
-  isRecording=true;
+  recognition.start();isRecording=true;
   document.getElementById('voiceBtn').classList.add('rec');
   document.getElementById('micLabel').textContent='Listening...';
   document.getElementById('micSub').textContent='Pause when done';
-  showToast('Speak now, then pause...',4000);
+  showToast('Speak now — auto-logs when you pause',4000);
 }
 function resetVoiceBtn(){
   document.getElementById('voiceBtn').classList.remove('rec');
   document.getElementById('micLabel').textContent='Voice';
   document.getElementById('micSub').textContent='Say what you ate';
 }
-function closeVoiceModal(){document.getElementById('voiceModal').classList.add('hidden');}
-async function submitVoiceLog(){
-  const val=document.getElementById('voiceTranscript').value.trim();
-  if(!val)return;
-  closeVoiceModal();
-  await processTextLog(val,'voice');
-}
 
-// TYPE
+// ─── TYPE ─────────────────────────────────────────────────
 function closeTypeModal(){document.getElementById('typeModal').classList.add('hidden');document.getElementById('typeInput').value='';}
 async function submitTextLog(){
   const val=document.getElementById('typeInput').value.trim();if(!val)return;
-  closeTypeModal();
-  await processTextLog(val,'type');
+  closeTypeModal();await processTextLog(val,'type');
 }
 document.getElementById('typeInput').addEventListener('keydown',e=>{if(e.key==='Enter')submitTextLog();});
 
-// SHARED log function for both voice and type
 async function processTextLog(text,source){
   document.getElementById('analyzingBar').classList.remove('hidden');
-  showToast('Analyzing...');
+  showToast('Analyzing "'+text+'"...');
   try{
-    const result=await callGPT([{role:'user',content:`The user logged: "${text}". Extract all food items and estimate calories. Return ONLY a JSON array: [{"name":"item","calories":number,"notes":"portion"}].`}],300);
-    const items=JSON.parse(result.replace(/```json|```/g,'').trim());
-    const t=timeLabel();
-    updateTodayData(d=>({...d,items:[...d.items,...items.map(i=>({...i,id:String(Date.now()+Math.random()),source,time:t}))]}));
-    showToast('✅ Added: '+items.map(i=>i.name+' ('+i.calories+' cal)').join(', '),6000);
+    const result=await callGPT([{role:'user',content:`The user logged: "${text}". Extract all food items and estimate calories. Return ONLY JSON array: [{"name":"item","calories":number,"notes":"portion"}].`}],300);
+    const items=JSON.parse(result.replace(/```json|```/g,'').trim()).map(i=>({...i,id:String(Date.now()+Math.random())}));
+    const total=items.reduce((s,i)=>s+(i.calories||0),0);
+    const title=items.length===1?items[0].name:items.slice(0,2).map(i=>i.name).join(', ')+(items.length>2?'...':'');
+    const meal={id:String(Date.now()),items,time:timeLabel(),title,source};
+    updateTodayData(d=>({...d,meals:[...(d.meals||[]),meal]}));
+    showToast('✅ '+items.map(i=>i.name+' ('+i.calories+' cal)').join(', '),6000);
   }catch(err){showToast('❌ '+(err.message||'Failed'),7000);}
   document.getElementById('analyzingBar').classList.add('hidden');
 }
 
-function openEditModal(id,cal){editingId=id;document.getElementById('editInput').value=cal;document.getElementById('editModal').classList.remove('hidden');setTimeout(()=>document.getElementById('editInput').focus(),100);}
-function closeEditModal(){document.getElementById('editModal').classList.add('hidden');editingId=null;}
-function saveEditModal(){const v=parseInt(document.getElementById('editInput').value);if(isNaN(v))return;updateTodayData(d=>({...d,items:d.items.map(i=>i.id===editingId?{...i,calories:v}:i)}));closeEditModal();showToast('✅ Updated!');}
-document.getElementById('editInput').addEventListener('keydown',e=>{if(e.key==='Enter')saveEditModal();});
-function deleteItem(id){updateTodayData(d=>({...d,items:d.items.filter(i=>i.id!==id)}));showToast('Removed');}
-
+// ─── EXERCISE ─────────────────────────────────────────────
 function openExModal(){
-  // Pre-fill with last exercise name
-  const lastEx=localStorage.getItem(LAST_EX_KEY)||'';
-  document.getElementById('exNameInput').value=lastEx;
+  document.getElementById('exNameInput').value=localStorage.getItem(LAST_EX_KEY)||'';
   document.getElementById('exCalInput').value='';
   document.getElementById('exModal').classList.remove('hidden');
   setTimeout(()=>document.getElementById('exCalInput').focus(),150);
@@ -527,22 +763,70 @@ function closeExModal(){document.getElementById('exModal').classList.add('hidden
 function saveExercise(){
   const name=document.getElementById('exNameInput').value.trim();
   const cal=parseInt(document.getElementById('exCalInput').value);
-  if(!name){showToast('Please enter an activity name');return;}
-  if(isNaN(cal)||cal<=0){showToast('Please enter calories burned');return;}
-  localStorage.setItem(LAST_EX_KEY,name); // save for next time
+  if(!name||isNaN(cal)||cal<=0){showToast('Enter activity name and calories');return;}
+  localStorage.setItem(LAST_EX_KEY,name);
   updateTodayData(d=>({...d,exercise:[...(d.exercise||[]),{id:String(Date.now()),label:name,calories:cal}]}));
   closeExModal();
-  showToast(`✅ ${name} logged — goal increased to ${(goal+(getTodayData().exercise||[]).reduce((s,e)=>s+(e.calories||0),0)).toLocaleString()} cal`);
+  showToast(`✅ ${name} logged!`,4000);
 }
 function deleteExercise(id){updateTodayData(d=>({...d,exercise:(d.exercise||[]).filter(e=>e.id!==id)}));}
 
-function openStepsModal(){document.getElementById('stepsModal').classList.remove('hidden');const d=getTodayData();document.getElementById('stepsInput').value=d.steps||'';setTimeout(()=>document.getElementById('stepsInput').focus(),150);}
+// ─── STEPS ────────────────────────────────────────────────
+function openStepsModal(){
+  document.getElementById('stepsModal').classList.remove('hidden');
+  const d=getTodayData();
+  document.getElementById('stepsInput').value=d.steps||'';
+  setTimeout(()=>document.getElementById('stepsInput').focus(),150);
+}
 function closeStepsModal(){document.getElementById('stepsModal').classList.add('hidden');}
-function saveSteps(){const v=parseInt(document.getElementById('stepsInput').value);if(!isNaN(v))updateTodayData(d=>({...d,steps:v}));closeStepsModal();showToast('✅ Steps saved!');}
+function saveSteps(){
+  const v=parseInt(document.getElementById('stepsInput').value);
+  if(!isNaN(v))updateTodayData(d=>({...d,steps:v}));
+  closeStepsModal();
+  showToast('✅ Steps saved!');
+}
 document.getElementById('stepsInput').addEventListener('keydown',e=>{if(e.key==='Enter')saveSteps();});
 
-render();
+// ─── HISTORY ──────────────────────────────────────────────
+function renderHistory(){
+  const list=document.getElementById('historyList'),today=todayKey();
+  const days=Object.keys(logs).filter(k=>k!==today).sort().reverse().slice(0,30);
+  if(!days.length){list.innerHTML='<div style="text-align:center;padding:40px;color:#bbb;font-size:15px">No history yet!</div>';return;}
+  list.innerHTML=days.map(day=>{
+    const d=logs[day];
+    const meals=d.meals||[];
+    const food=meals.reduce((s,m)=>s+m.items.reduce((ss,i)=>ss+(i.calories||0),0),0);
+    const ex=(d.exercise||[]).reduce((s,e)=>s+(e.calories||0),0);
+    const stepCal=estimateStepCalories(d.steps);
+    const net=food-ex-stepCal;
+    const date=new Date(day+'T12:00:00'),ds=date.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    return`<div class="history-day">
+      <div class="history-day-header">
+        <div><div class="history-date">${ds}</div><div class="history-meta">${meals.length} meal${meals.length!==1?'s':''}${d.steps?` · ${d.steps.toLocaleString()} steps`:''}</div></div>
+        <div style="text-align:right"><div class="history-net">${food.toLocaleString()}</div><div class="history-meta">cal eaten${ex>0?` · ${ex} burned`:''}</div></div>
+      </div>
+      ${meals.map(m=>{
+        const mt=m.items.reduce((s,i)=>s+(i.calories||0),0);
+        return`<div class="history-item-row"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%">${m.title||'Meal'}</span><span class="history-item-cal">${mt} cal</span></div>`;
+      }).join('')}
+    </div>`;
+  }).join('');
+}
+
+// ─── PHOTO PICKER ────────────────────────────────────────
+function openPhotoPicker(){document.getElementById('photoPickerModal').classList.remove('hidden');}
+function closePhotoPicker(){document.getElementById('photoPickerModal').classList.add('hidden');}
+
+// ─── INIT ─────────────────────────────────────────────────
+renderHome();
 if(!apiKey)setTimeout(()=>showToast('Go to Settings to add your OpenAI key',6000),800);
+
+// Try to request steps on load if Health bridge available
+setTimeout(()=>{
+  if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.getSteps){
+    window.webkit.messageHandlers.getSteps.postMessage({});
+  }
+},1000);
 </script>
 </body>
 </html>

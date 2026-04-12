@@ -45,7 +45,8 @@
   .ring-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:13px;font-weight:700;}
 
   /* LOG BUTTONS */
-  .log-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 16px 12px;}
+  .log-btns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:0 16px 12px;}
+  .log-btns-top{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 16px 10px;}
   .log-btn{border:none;border-radius:18px;padding:18px 8px 16px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;}
   .log-btn.photo{background:#000;color:#fff;}
   .log-btn.voice{background:#f2f2f7;color:#000;}
@@ -198,17 +199,7 @@
 <input type="file" id="photoLibraryInput" accept="image/*" style="display:none" onchange="handlePhoto(event,'food')">
 <input type="file" id="barcodeInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event,'barcode')">
 
-<!-- Photo picker modal -->
-<div class="modal-overlay hidden" id="photoPickerModal">
-  <div class="modal">
-    <div class="modal-title">Add Food Photo</div>
-    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;">
-      <button onclick="closePhotoPicker();setTimeout(()=>document.getElementById('photoInput').click(),100);" style="background:#000;border:none;border-radius:14px;padding:16px;font-size:16px;font-weight:700;color:#fff;cursor:pointer;">📷 Take Photo</button>
-      <button onclick="closePhotoPicker();setTimeout(()=>document.getElementById('photoLibraryInput').click(),100);" style="background:#f2f2f7;border:none;border-radius:14px;padding:16px;font-size:16px;font-weight:700;color:#000;cursor:pointer;">🖼 Choose from Library</button>
-    </div>
-    <button class="modal-cancel" style="width:100%" onclick="closePhotoPicker()">Cancel</button>
-  </div>
-</div>
+
 
 <!-- ═══════════════ HOME SCREEN ═══════════════ -->
 <div class="screen active" id="homeScreen">
@@ -240,11 +231,17 @@
     </div>
   </div>
 
-  <div class="log-btns">
-    <button class="log-btn photo" onclick="checkKeyThen(openPhotoPicker)">
-      <div class="log-btn-label">Photo</div>
-      <div class="log-btn-sub">Snap your food</div>
+  <div class="log-btns-top">
+    <button class="log-btn photo" onclick="checkKeyThen(()=>document.getElementById('photoInput').click())">
+      <div class="log-btn-label">Snap</div>
+      <div class="log-btn-sub">Take a photo</div>
     </button>
+    <button class="log-btn photo" onclick="checkKeyThen(()=>document.getElementById('photoLibraryInput').click())">
+      <div class="log-btn-label">Upload</div>
+      <div class="log-btn-sub">From library</div>
+    </button>
+  </div>
+  <div class="log-btns">
     <button class="log-btn voice" id="voiceBtn" onclick="checkKeyThen(startVoice)">
       <div class="voice-bars">
         <div class="voice-bar b1"></div><div class="voice-bar b2"></div><div class="voice-bar b3"></div><div class="voice-bar b4"></div><div class="voice-bar b5"></div>
@@ -351,12 +348,12 @@
   <div class="detail-items" id="detailItems"></div>
 
   <!-- Fix with AI -->
-  <button class="fix-ai-btn" onclick="toggleFixPanel()">✦ Fix with AI</button>
+  <button class="fix-ai-btn" onclick="toggleFixPanel()">Fix with AI</button>
   <div class="fix-panel hidden" id="fixPanel">
     <div class="fix-panel-title">Tell the AI what to fix:</div>
     <textarea class="fix-input" id="fixInput" rows="3" placeholder="e.g. It was 3 eggs not 2, and 4 slices of ham"></textarea>
     <div class="fix-btns">
-      <button class="fix-voice-btn" id="fixVoiceBtn" onclick="startFixVoice()">🎤 Voice</button>
+      <button class="fix-voice-btn" id="fixVoiceBtn" onclick="startFixVoice()">Voice</button>
       <button class="fix-submit-btn" onclick="submitFix()">Analyze & Fix</button>
     </div>
   </div>
@@ -826,10 +823,6 @@ function renderHistory(){
     </div>`;
   }).join('');
 }
-
-// ─── PHOTO PICKER ────────────────────────────────────────
-function openPhotoPicker(){document.getElementById('photoPickerModal').classList.remove('hidden');}
-function closePhotoPicker(){document.getElementById('photoPickerModal').classList.add('hidden');}
 
 // ─── INIT ─────────────────────────────────────────────────
 renderHome();

@@ -45,7 +45,7 @@
   .ring-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:13px;font-weight:700;}
 
   /* LOG BUTTONS */
-  .log-btns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:0 16px 12px;}
+  .log-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 16px 12px;}
   .log-btns-top{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 16px 10px;}
   .log-btn{border:none;border-radius:18px;padding:18px 8px 16px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;}
   .log-btn.photo{background:#000;color:#fff;}
@@ -197,7 +197,6 @@
 
 <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event,'food')">
 <input type="file" id="photoLibraryInput" accept="image/*" style="display:none" onchange="handlePhoto(event,'food')">
-<input type="file" id="barcodeInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event,'barcode')">
 
 
 
@@ -253,10 +252,7 @@
       <div class="log-btn-label">Type</div>
       <div class="log-btn-sub">Write it out</div>
     </button>
-    <button class="log-btn barcode" onclick="checkKeyThen(()=>document.getElementById('barcodeInput').click())">
-      <div class="log-btn-label">Barcode</div>
-      <div class="log-btn-sub">Photo a package</div>
-    </button>
+
   </div>
 
   <!-- Stat cards -->
@@ -677,38 +673,18 @@ async function handlePhoto(event,mode){
     const b64=compressed.split(',')[1];
     const t=timeLabel();
 
-    if(mode==='barcode'){
-      const nameText=await callGPT([{role:'user',content:[
-        {type:'image_url',image_url:{url:`data:image/jpeg;base64,${b64}`,detail:'low'}},
-        {type:'text',text:'What food product is in this image? Return JSON: {"name":"product name","barcode":"number or null"}'}
-      ]}],80);
-      let productName='Unknown product',barcodeId=null;
-      try{const p=JSON.parse(nameText.replace(/```json|```/g,'').trim());productName=p.name||productName;barcodeId=p.barcode||null;}catch{}
-      const memKey=barcodeId||productName.toLowerCase().replace(/\s+/g,'-');
-      let items;
-      if(barcodeMemory[memKey]){
-        const mem=barcodeMemory[memKey];
-        items=[{name:mem.name,calories:mem.calories,notes:'from your history',id:String(Date.now()),barcodeId:memKey}];
-        showToast(`✅ ${mem.name} (${mem.calories} cal) — from memory!`,5000);
-      } else {
-        const calText=await callGPT([{role:'user',content:`Food: "${productName}". Estimate calories per serving. Return ONLY JSON: [{"name":"${productName}","calories":number,"notes":"per serving"}]`}],100);
-        items=JSON.parse(calText.replace(/```json|```/g,'').trim()).map(i=>({...i,id:String(Date.now()+Math.random()),barcodeId:memKey}));
-        showToast(`✅ Added ${productName} — tap Edit on the detail screen to fix calories!`,7000);
-      }
-      const meal={id:String(Date.now()),items,imageData:compressed,time:t,title:productName,source:'barcode'};
-      updateTodayData(d=>({...d,meals:[...(d.meals||[]),meal]}));
-    } else {
-      // Food photo — analyze all items
+    {
+      // Snap handles meals, single items, barcodes and nutrition labels
       const text=await callGPT([{role:'user',content:[
         {type:'image_url',image_url:{url:`data:image/jpeg;base64,${b64}`,detail:'low'}},
-        {type:'text',text:'List each food item in this photo. For each item give a name and estimated calories. Return ONLY JSON: [{"name":"item name","calories":number,"notes":"portion size"}]. Be specific.'}
+        {type:'text',text:'This could be a meal, a single food item, a barcode, or a nutrition label. Identify all food items and their calories. If it is a barcode or packaged product, read the product name and use the nutrition label calories per serving if visible, otherwise estimate. Return ONLY JSON: [{"name":"item name","calories":number,"notes":"portion or serving size"}]. Be specific and accurate.'}
       ]}],350);
       const items=JSON.parse(text.replace(/```json|```/g,'').trim()).map(i=>({...i,id:String(Date.now()+Math.random())}));
       const total=items.reduce((s,i)=>s+(i.calories||0),0);
       const title=items.length===1?items[0].name:items.slice(0,2).map(i=>i.name).join(', ')+(items.length>2?'...':'');
       const meal={id:String(Date.now()),items,imageData:compressed,time:t,title,source:'photo'};
       updateTodayData(d=>({...d,meals:[...(d.meals||[]),meal]}));
-      showToast(`✅ ${items.length} items, ${total} cal total — tap to view details`,6000);
+      showToast(`✅ ${items.length} item${items.length>1?'s':''}, ${total} cal — tap to edit`,5000);
     }
   }catch(err){showToast('❌ '+(err.message||'Failed'),7000);}
   document.getElementById('analyzingBar').classList.add('hidden');

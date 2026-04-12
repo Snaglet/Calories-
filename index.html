@@ -503,7 +503,7 @@ function renderHome(){
 function renderMealLog(data){
   const c=document.getElementById('mealLog'),t=document.getElementById('mealSectionTitle');
   if(!data.meals||!data.meals.length){c.innerHTML='';t.innerHTML='';return;}
-  t.innerHTML='<div class="section-title">Today's Meals</div>';
+  t.innerHTML='<div class="section-title">Today\'s Meals</div>';
   c.innerHTML='';
   [...data.meals].reverse().forEach(meal=>{
     const total=meal.items.reduce((s,i)=>s+(i.calories||0),0);
@@ -524,7 +524,7 @@ function renderMealLog(data){
         </div>
       </div>
       <div style="display:flex;align-items:center;padding:0 12px;">
-        <button id="del-${meal.id}" style="background:none;border:none;color:#ff3b30;font-size:12px;font-weight:600;cursor:pointer;padding:4px;pointer-events:all;">Remove</button>
+        <button data-delid="${meal.id}" style="background:none;border:none;color:#ff3b30;font-size:12px;font-weight:600;cursor:pointer;padding:4px;pointer-events:all;">Remove</button>
       </div>`;
     // Tap card = open detail
     div.addEventListener('click', ()=>openMealDetail(meal.id));

@@ -487,7 +487,7 @@ function renderMealLog(data){
   c.innerHTML=[...data.meals].reverse().map(meal=>{
     const total=meal.items.reduce((s,i)=>s+(i.calories||0),0);
     const desc=meal.items.length>1?meal.items.slice(0,2).map(i=>i.name).join(', ')+(meal.items.length>2?'...':''):meal.items[0]?.name||'Meal';
-    return`<div class="meal-card" onclick="openMealDetail('${meal.id}')">
+    return`<div class="meal-card" data-mealid="${meal.id}">
       <div class="meal-card-thumb">${meal.imageData?`<img src="${meal.imageData}" alt="meal">`:'No photo'}</div>
       <div class="meal-card-body">
         <div class="meal-card-title">${meal.title||desc}</div>
@@ -497,13 +497,23 @@ function renderMealLog(data){
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
           <div class="meal-card-tap">Tap to edit →</div>
-          <button onclick="event.stopPropagation();deleteMeal('${meal.id}')" style="background:none;border:none;color:#ff3b30;font-size:12px;font-weight:600;cursor:pointer;padding:0;">Remove</button>
+          <button class="meal-delete-btn" data-mealid="${meal.id}" style="background:none;border:none;color:#ff3b30;font-size:12px;font-weight:600;cursor:pointer;padding:0;">Remove</button>
         </div>
       </div>
     </div>`;
   }).join('');
+  // Event delegation for meal cards
+  c.querySelectorAll('.meal-card').forEach(card=>{
+    card.addEventListener('click', function(e){
+      if(e.target.classList.contains('meal-delete-btn')){
+        e.stopPropagation();
+        deleteMeal(e.target.dataset.mealid);
+      } else {
+        openMealDetail(this.dataset.mealid);
+      }
+    });
+  });
 }
-
 function renderExLog(data){
   const c=document.getElementById('exLog');
   if(!data.exercise||!data.exercise.length){c.innerHTML='';return;}

@@ -17,13 +17,13 @@
   .screen.active{display:block;}
 
   /* HEADER */
-  .header{background:#ffffff;padding:56px 20px 14px;border-bottom:1px solid #efefef;}
+  .header{background:#ffffff;padding:54px 20px 12px;border-bottom:1px solid #efefef;}
   .header-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
   .app-title{font-size:28px;font-weight:800;}
   .streak-badge{border:1.5px solid #e0e0e0;border-radius:22px;padding:7px 14px;font-size:14px;font-weight:600;background:#fff;}
 
   /* WEEK STRIP */
-  .week-strip{display:flex;justify-content:space-between;}
+  .week-strip{display:flex;justify-content:space-between;padding:0 2px;}
   .day-item{display:flex;flex-direction:column;align-items:center;gap:5px;}
   .day-label{font-size:11px;color:#aaa;font-weight:500;}
   .day-circle{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;border:2px solid #e8e8e8;color:#ccc;}
@@ -33,16 +33,16 @@
   .day-circle.warn{border-color:#ff9f0a;color:#ff9f0a;}
 
   /* MAIN CARD */
-  .main-card{background:#fff;margin:16px 16px 12px;border-radius:22px;padding:22px 20px;box-shadow:0 2px 14px rgba(0,0,0,0.08);border:1px solid #efefef;}
+  .main-card{background:#fff;margin:12px 16px 10px;border-radius:18px;padding:14px 16px;box-shadow:0 2px 14px rgba(0,0,0,0.08);border:1px solid #efefef;}
   .cal-row{display:flex;justify-content:space-between;align-items:center;}
-  .cal-number{font-size:56px;font-weight:800;line-height:1;letter-spacing:-2px;}
+  .cal-number{font-size:38px;font-weight:800;line-height:1;letter-spacing:-1px;}
   .cal-denom{font-size:20px;font-weight:400;color:#bbb;margin-left:2px;}
-  .cal-label{font-size:14px;color:#999;margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .cal-label{font-size:12px;color:#999;margin-top:3px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;}
   .goal-edit-btn{background:none;border:none;color:#007aff;font-size:13px;cursor:pointer;font-weight:600;padding:0;}
-  .net-note{font-size:12px;color:#bbb;margin-top:5px;}
-  .ring-wrap{position:relative;width:84px;height:84px;flex-shrink:0;}
+  .net-note{font-size:11px;color:#bbb;margin-top:2px;}
+  .ring-wrap{position:relative;width:60px;height:60px;flex-shrink:0;}
   .ring-wrap svg{transform:rotate(-90deg);}
-  .ring-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:13px;font-weight:700;}
+  .ring-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:11px;font-weight:700;}
 
   /* LOG BUTTONS */
   .log-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 16px 12px;}
@@ -228,9 +228,9 @@
         <div class="net-note" id="netLabel"></div>
       </div>
       <div class="ring-wrap">
-        <svg width="84" height="84" viewBox="0 0 84 84">
-          <circle cx="42" cy="42" r="35" fill="none" stroke="#efefef" stroke-width="8"/>
-          <circle cx="42" cy="42" r="35" fill="none" stroke="#000" stroke-width="8" stroke-dasharray="219.9" id="progressRing" stroke-dashoffset="219.9" stroke-linecap="round"/>
+        <svg width="60" height="60" viewBox="0 0 60 60">
+          <circle cx="30" cy="30" r="24" fill="none" stroke="#efefef" stroke-width="6"/>
+          <circle cx="30" cy="30" r="24" fill="none" stroke="#000" stroke-width="6" stroke-dasharray="150.8" id="progressRing" stroke-dashoffset="150.8" stroke-linecap="round"/>
         </svg>
         <div class="ring-center" id="ringPct">0%</div>
       </div>
@@ -454,7 +454,7 @@ function renderHome(){
   document.getElementById('netTotal').textContent=net.toLocaleString();
   document.getElementById('exTotal').textContent=`${exCals} cal`;
   document.getElementById('ringPct').textContent=Math.round(pct*100)+'%';
-  document.getElementById('progressRing').setAttribute('stroke-dashoffset',219.9-pct*219.9);
+  document.getElementById('progressRing').setAttribute('stroke-dashoffset',150.8-pct*150.8);
   document.getElementById('progressRing').setAttribute('stroke',foodCals>effectiveGoal?'#ff3b30':'#000');
   document.getElementById('streakCount').textContent=calcStreak();
 
@@ -548,10 +548,7 @@ function renderDetailScreen(meal){
       </div>
     </div>`).join('');
   // Add item button
-  document.getElementById('detailItems').innerHTML += \`
-    <div style="padding:14px 20px;border-top:1px solid #f5f5f5;">
-      <button onclick="addDetailItem()" style="background:#f2f2f7;border:none;border-radius:12px;padding:10px 20px;font-size:14px;font-weight:600;color:#007aff;cursor:pointer;width:100%">+ Add Item</button>
-    </div>\`;
+  document.getElementById('detailItems').innerHTML += '<div style="padding:14px 20px;border-top:1px solid #f5f5f5;"><button onclick="addDetailItem()" style="background:#f2f2f7;border:none;border-radius:12px;padding:10px 20px;font-size:14px;font-weight:600;color:#007aff;cursor:pointer;width:100%">+ Add Item</button></div>';
   document.getElementById('fixPanel').classList.add('hidden');
   document.getElementById('fixInput').value='';
 }

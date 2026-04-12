@@ -178,6 +178,13 @@
     <div class="modal-btns"><button class="modal-cancel" onclick="closeStepsModal()">Cancel</button><button class="modal-confirm" onclick="saveSteps()">Save</button></div>
   </div>
 </div>
+<div class="modal-overlay hidden" id="editExModal">
+  <div class="modal"><div class="modal-title">Edit Exercise</div>
+    <input type="text" id="editExName" placeholder="Activity name">
+    <input type="number" id="editExCal" placeholder="Calories burned" inputmode="numeric">
+    <div class="modal-btns"><button class="modal-cancel" onclick="closeEditExercise()">Cancel</button><button class="modal-confirm" onclick="saveEditExercise()">Save</button></div>
+  </div>
+</div>
 <div class="modal-overlay hidden" id="goalModal">
   <div class="modal"><div class="modal-title">Daily Calorie Goal</div>
     <input type="number" id="goalInput" placeholder="e.g. 1800" inputmode="numeric">
@@ -496,13 +503,17 @@ function renderHome(){
 function renderMealLog(data){
   const c=document.getElementById('mealLog'),t=document.getElementById('mealSectionTitle');
   if(!data.meals||!data.meals.length){c.innerHTML='';t.innerHTML='';return;}
-  t.innerHTML='<div class="section-title">Today\'s Meals</div>';
-  c.innerHTML=[...data.meals].reverse().map(meal=>{
+  t.innerHTML='<div class="section-title">Today's Meals</div>';
+  c.innerHTML='';
+  [...data.meals].reverse().forEach(meal=>{
     const total=meal.items.reduce((s,i)=>s+(i.calories||0),0);
     const desc=meal.items.length>1?meal.items.slice(0,2).map(i=>i.name).join(', ')+(meal.items.length>2?'...':''):meal.items[0]?.name||'Meal';
-    return`<div class="meal-card" data-mealid="${meal.id}">
-      <div class="meal-card-thumb">${meal.imageData?`<img src="${meal.imageData}" alt="meal">`:'No photo'}</div>
-      <div class="meal-card-body">
+    const div=document.createElement('div');
+    div.className='meal-card';
+    div.style.cursor='pointer';
+    div.innerHTML=`
+      <div class="meal-card-thumb" style="pointer-events:none">${meal.imageData?`<img src="${meal.imageData}" alt="meal" style="pointer-events:none">`:'No photo'}</div>
+      <div class="meal-card-body" style="pointer-events:none">
         <div class="meal-card-title">${meal.title||desc}</div>
         <div class="meal-card-meta">
           <div class="meal-card-items">${meal.items.length} item${meal.items.length!==1?'s':''} · ${meal.time||''}</div>
@@ -510,23 +521,22 @@ function renderMealLog(data){
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
           <div class="meal-card-tap">Tap to edit →</div>
-          <button class="meal-delete-btn" data-mealid="${meal.id}" style="background:none;border:none;color:#ff3b30;font-size:12px;font-weight:600;cursor:pointer;padding:0;">Remove</button>
         </div>
       </div>
-    </div>`;
-  }).join('');
-  // Event delegation for meal cards
-  c.querySelectorAll('.meal-card').forEach(card=>{
-    card.addEventListener('click', function(e){
-      if(e.target.classList.contains('meal-delete-btn')){
-        e.stopPropagation();
-        deleteMeal(e.target.dataset.mealid);
-      } else {
-        openMealDetail(this.dataset.mealid);
-      }
+      <div style="display:flex;align-items:center;padding:0 12px;">
+        <button id="del-${meal.id}" style="background:none;border:none;color:#ff3b30;font-size:12px;font-weight:600;cursor:pointer;padding:4px;pointer-events:all;">Remove</button>
+      </div>`;
+    // Tap card = open detail
+    div.addEventListener('click', ()=>openMealDetail(meal.id));
+    // Delete button
+    div.querySelector(`#del-${meal.id.replace(/\./g,'\\.')}`).addEventListener('click', (e)=>{
+      e.stopPropagation();
+      deleteMeal(meal.id);
     });
+    c.appendChild(div);
   });
 }
+
 function renderExLog(data){
   const c=document.getElementById('exLog');
   if(!data.exercise||!data.exercise.length){c.innerHTML='';return;}
@@ -534,7 +544,7 @@ function renderExLog(data){
     <div class="ex-item">
       <div style="font-size:15px;font-weight:600">${ex.label}</div>
       <div style="display:flex;align-items:center;gap:10px">
-        <div style="font-size:15px;color:#34c759;font-weight:700">+${ex.calories} to goal</div>
+        <button onclick="openEditExercise('${ex.id}','${ex.label.replace(/'/g,'')}',${ex.calories})" style="font-size:15px;color:#34c759;font-weight:700;background:none;border:none;cursor:pointer;border-bottom:1px dashed #34c759;padding:0">+${ex.calories} cal</button>
         <button onclick="deleteExercise('${ex.id}')" style="background:none;border:none;color:#ff3b30;font-size:22px;cursor:pointer;line-height:1">×</button>
       </div>
     </div>`).join('');
@@ -822,6 +832,25 @@ function saveExercise(){
   showToast(`✅ ${name} logged!`,4000);
 }
 function deleteExercise(id){updateTodayData(d=>({...d,exercise:(d.exercise||[]).filter(e=>e.id!==id)}));}
+
+let editingExId=null;
+function openEditExercise(id,label,cal){
+  editingExId=id;
+  document.getElementById('editExName').value=label;
+  document.getElementById('editExCal').value=cal;
+  document.getElementById('editExModal').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('editExCal').focus(),100);
+}
+function closeEditExercise(){document.getElementById('editExModal').classList.add('hidden');editingExId=null;}
+function saveEditExercise(){
+  const name=document.getElementById('editExName').value.trim();
+  const cal=parseInt(document.getElementById('editExCal').value);
+  if(!name||isNaN(cal)||cal<=0){showToast('Enter name and calories');return;}
+  updateTodayData(d=>({...d,exercise:(d.exercise||[]).map(e=>e.id===editingExId?{...e,label:name,calories:cal}:e)}));
+  closeEditExercise();
+  showToast('✅ Exercise updated!');
+}
+document.getElementById('editExCal').addEventListener('keydown',e=>{if(e.key==='Enter')saveEditExercise();});
 
 // ─── STEPS ────────────────────────────────────────────────
 function openStepsModal(){

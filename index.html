@@ -194,6 +194,13 @@
     <div class="modal-btns"><button class="modal-cancel" onclick="closeItemEdit()">Cancel</button><button class="modal-confirm" onclick="saveItemEdit()">Save</button></div>
   </div>
 </div>
+<div class="modal-overlay hidden" id="addItemModal">
+  <div class="modal"><div class="modal-title">Add Item</div>
+    <input type="text" id="addItemName" placeholder="Item name (e.g. Side salad)">
+    <input type="number" id="addItemCal" placeholder="Calories" inputmode="numeric">
+    <div class="modal-btns"><button class="modal-cancel" onclick="closeAddItemModal()">Cancel</button><button class="modal-confirm" onclick="saveAddItem()">Add</button></div>
+  </div>
+</div>
 
 <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event,'food')">
 <input type="file" id="photoLibraryInput" accept="image/*" style="display:none" onchange="handlePhoto(event,'food')">
@@ -344,15 +351,8 @@
   <div class="detail-items" id="detailItems"></div>
 
   <!-- Fix with AI -->
-  <button class="fix-ai-btn" onclick="toggleFixPanel()">Fix with AI</button>
-  <div class="fix-panel hidden" id="fixPanel">
-    <div class="fix-panel-title">Tell the AI what to fix:</div>
-    <textarea class="fix-input" id="fixInput" rows="3" placeholder="e.g. It was 3 eggs not 2, and 4 slices of ham"></textarea>
-    <div class="fix-btns">
-      <button class="fix-voice-btn" id="fixVoiceBtn" onclick="startFixVoice()">Voice</button>
-      <button class="fix-submit-btn" onclick="submitFix()">Analyze & Fix</button>
-    </div>
-  </div>
+  <button class="fix-ai-btn" id="fixAiBtn" onclick="startFixVoice()">Fix with AI</button>
+  <div id="fixInput" style="display:none"></div>
 
   <button class="save-btn" onclick="goBack()">Save</button>
 </div>
@@ -495,7 +495,10 @@ function renderMealLog(data){
           <div class="meal-card-items">${meal.items.length} item${meal.items.length!==1?'s':''} · ${meal.time||''}</div>
           <div class="meal-card-cals">${total.toLocaleString()}<span style="font-size:12px;font-weight:400;color:#aaa"> cal</span></div>
         </div>
-        <div class="meal-card-tap">Tap to edit →</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+          <div class="meal-card-tap">Tap to edit →</div>
+          <button onclick="event.stopPropagation();deleteMeal('${meal.id}')" style="background:none;border:none;color:#ff3b30;font-size:12px;font-weight:600;cursor:pointer;padding:0;">Remove</button>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -535,14 +538,20 @@ function renderDetailScreen(meal){
   document.getElementById('detailItems').innerHTML=meal.items.map((item,idx)=>`
     <div class="detail-item">
       <div class="detail-item-name">${item.name}</div>
-      <div style="display:flex;align-items:center;gap:4px">
+      <div style="display:flex;align-items:center;gap:8px">
         <input class="detail-item-cal-input" type="number" value="${item.calories}" inputmode="numeric"
           onchange="inlineEditItem(${idx}, this.value)"
           onfocus="this.select()"
         >
         <span style="font-size:13px;color:#aaa">cal</span>
+        <button onclick="deleteDetailItem(${idx})" style="background:none;border:none;color:#ff3b30;font-size:20px;cursor:pointer;line-height:1;padding:0 2px">×</button>
       </div>
     </div>`).join('');
+  // Add item button
+  document.getElementById('detailItems').innerHTML += \`
+    <div style="padding:14px 20px;border-top:1px solid #f5f5f5;">
+      <button onclick="addDetailItem()" style="background:#f2f2f7;border:none;border-radius:12px;padding:10px 20px;font-size:14px;font-weight:600;color:#007aff;cursor:pointer;width:100%">+ Add Item</button>
+    </div>\`;
   document.getElementById('fixPanel').classList.add('hidden');
   document.getElementById('fixInput').value='';
 }
@@ -563,11 +572,42 @@ function inlineEditItem(idx, val){
   if(meal&&meal.items[idx]){
     meal.items[idx].calories=v;
     saveLogs();
-    // Update total
     const total=meal.items.reduce((s,i)=>s+(i.calories||0),0);
     document.getElementById('detailTotal').textContent=total.toLocaleString();
     showToast('✅ Updated!',2000);
   }
+}
+
+function deleteDetailItem(idx){
+  const k=todayKey();
+  const meal=logs[k].meals.find(m=>m.id===currentMealId);
+  if(!meal)return;
+  meal.items.splice(idx,1);
+  saveLogs();
+  renderDetailScreen(meal);
+  showToast('Item removed');
+}
+
+function addDetailItem(){
+  document.getElementById('addItemName').value='';
+  document.getElementById('addItemCal').value='';
+  document.getElementById('addItemModal').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('addItemName').focus(),100);
+}
+function closeAddItemModal(){document.getElementById('addItemModal').classList.add('hidden');}
+function saveAddItem(){
+  const name=document.getElementById('addItemName').value.trim();
+  const cal=parseInt(document.getElementById('addItemCal').value);
+  if(!name){showToast('Enter an item name');return;}
+  if(isNaN(cal)||cal<0){showToast('Enter calories');return;}
+  const k=todayKey();
+  const meal=logs[k].meals.find(m=>m.id===currentMealId);
+  if(!meal)return;
+  meal.items.push({id:String(Date.now()),name,calories:cal,notes:'added manually'});
+  saveLogs();
+  renderDetailScreen(meal);
+  closeAddItemModal();
+  showToast('✅ '+name+' added!',3000);
 }
 function saveItemEdit(){
   const v=parseInt(document.getElementById('itemEditInput').value);
@@ -583,50 +623,55 @@ function saveItemEdit(){
   closeItemEdit();
 }
 document.getElementById('itemEditInput').addEventListener('keydown',e=>{if(e.key==='Enter')saveItemEdit();});
+document.getElementById('addItemCal').addEventListener('keydown',e=>{if(e.key==='Enter')saveAddItem();});
 
 // ─── FIX WITH AI ──────────────────────────────────────────
-function toggleFixPanel(){
-  const p=document.getElementById('fixPanel');
-  p.classList.toggle('hidden');
-  if(!p.classList.contains('hidden'))document.getElementById('fixInput').focus();
-}
-
 function startFixVoice(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR){showToast('Voice not supported — type your correction');return;}
+  if(!SR){showToast('Voice not supported on this browser');return;}
   if(isFixRecording){fixRecognition?.stop();return;}
-  fixRecognition=new SR();fixRecognition.lang='en-US';
-  fixRecognition.onresult=(e)=>{
-    document.getElementById('fixInput').value=Array.from(e.results).map(r=>r[0].transcript).join(' ').trim();
-    isFixRecording=false;document.getElementById('fixVoiceBtn').textContent='🎤 Voice';
+  fixRecognition=new SR();
+  fixRecognition.continuous=false;
+  fixRecognition.interimResults=false;
+  fixRecognition.lang='en-US';
+  fixRecognition.onresult=async(e)=>{
+    const correction=Array.from(e.results).map(r=>r[0].transcript).join(' ').trim();
+    isFixRecording=false;resetFixBtn();
+    if(!correction){showToast('Nothing heard — try again');return;}
+    showToast('Heard: "'+correction+'" — fixing...');
+    await applyFix(correction);
   };
-  fixRecognition.onerror=()=>{isFixRecording=false;document.getElementById('fixVoiceBtn').textContent='🎤 Voice';};
-  fixRecognition.onend=()=>{isFixRecording=false;document.getElementById('fixVoiceBtn').textContent='🎤 Voice';};
+  fixRecognition.onerror=(e)=>{isFixRecording=false;resetFixBtn();showToast('Mic error: '+e.error,5000);};
+  fixRecognition.onend=()=>{isFixRecording=false;resetFixBtn();};
   fixRecognition.start();
   isFixRecording=true;
-  document.getElementById('fixVoiceBtn').textContent='⏹ Stop';
-  showToast('Speak your correction...',3000);
+  const btn=document.getElementById('fixAiBtn');
+  btn.textContent='Listening... tap to stop';
+  btn.style.background='#ff3b30';
+  btn.style.color='#fff';
+  showToast('Speak your correction — what needs to change?',4000);
 }
 
-async function submitFix(){
-  const correction=document.getElementById('fixInput').value.trim();
-  if(!correction){showToast('Tell the AI what to fix');return;}
+function resetFixBtn(){
+  const btn=document.getElementById('fixAiBtn');
+  btn.textContent='Fix with AI';
+  btn.style.background='';
+  btn.style.color='';
+}
+
+async function applyFix(correction){
   const k=todayKey();
   const meal=logs[k].meals.find(m=>m.id===currentMealId);
   if(!meal)return;
-  showToast('Analyzing correction...');
   document.getElementById('analyzingBar').classList.remove('hidden');
   try{
     const currentItems=JSON.stringify(meal.items.map(i=>({name:i.name,calories:i.calories})));
-    const text=await callGPT([{role:'user',content:`Current meal items: ${currentItems}. User correction: "${correction}". Update the meal items based on the correction. Return ONLY the updated JSON array: [{"name":"item","calories":number,"notes":"portion"}]. Keep items that weren't mentioned the same.`}],400);
+    const text=await callGPT([{role:'user',content:`Current meal items: ${currentItems}. User says: "${correction}". Update the meal based on this correction. Return ONLY the updated JSON array: [{"name":"item","calories":number,"notes":"portion"}]. Keep items not mentioned unchanged.`}],400);
     const updated=JSON.parse(text.replace(/```json|```/g,'').trim());
     meal.items=updated.map(i=>({...i,id:String(Date.now()+Math.random())}));
-    // Update title
     meal.title=updated.slice(0,2).map(i=>i.name).join(', ')+(updated.length>2?'...':'');
     saveLogs();
     renderDetailScreen(meal);
-    document.getElementById('fixPanel').classList.add('hidden');
-    document.getElementById('fixInput').value='';
     showToast('✅ Meal updated!',5000);
   }catch(err){showToast('❌ '+(err.message||'Failed'),7000);}
   document.getElementById('analyzingBar').classList.add('hidden');
@@ -798,6 +843,12 @@ function renderHistory(){
       }).join('')}
     </div>`;
   }).join('');
+}
+
+// ─── DELETE MEAL ─────────────────────────────────────────
+function deleteMeal(mealId){
+  updateTodayData(d=>({...d,meals:(d.meals||[]).filter(m=>m.id!==mealId)}));
+  showToast('Meal removed');
 }
 
 // ─── INIT ─────────────────────────────────────────────────

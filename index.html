@@ -593,23 +593,68 @@ function renderDetailScreen(meal){
   document.getElementById('detailDesc').textContent=meal.title||meal.items.map(i=>i.name).join(', ');
   document.getElementById('detailTotal').textContent=total.toLocaleString();
   document.getElementById('detailImg').innerHTML=meal.imageData
-    ?`<img class="detail-img" src="${meal.imageData}" alt="meal">`
+    ?'<img class="detail-img" src="'+meal.imageData+'" alt="meal">'
     :'';
-  document.getElementById('detailItems').innerHTML=meal.items.map((item,idx)=>`
-    <div class="detail-item">
-      <div class="detail-item-name">${item.name}</div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <input class="detail-item-cal-input" type="number" value="${item.calories}" inputmode="numeric"
-          onchange="inlineEditItem(${idx}, this.value)"
-          onfocus="this.select()"
-        >
-        <span style="font-size:13px;color:#aaa">cal</span>
-        <button onclick="deleteDetailItem(${idx})" style="background:none;border:none;color:#ff3b30;font-size:20px;cursor:pointer;line-height:1;padding:0 2px">×</button>
-      </div>
-    </div>`).join('');
-  // Add item button
-  document.getElementById('detailItems').innerHTML += '<div style="padding:14px 20px;border-top:1px solid #f5f5f5;"><button onclick="addDetailItem()" style="background:#f2f2f7;border:none;border-radius:12px;padding:10px 20px;font-size:14px;font-weight:600;color:#007aff;cursor:pointer;width:100%">+ Add Item</button></div>';
+
+  // Build items list using DOM - no inline handlers
+  const container=document.getElementById('detailItems');
+  container.innerHTML='';
+
+  meal.items.forEach(function(item, idx){
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid #f5f5f5;';
+
+    // Item name
+    const name=document.createElement('div');
+    name.style.cssText='font-size:15px;font-weight:600;flex:1;';
+    name.textContent=item.name;
+
+    // Right side
+    const right=document.createElement('div');
+    right.style.cssText='display:flex;align-items:center;gap:10px;';
+
+    // Calorie input - tap to edit inline
+    const calInput=document.createElement('input');
+    calInput.type='number';
+    calInput.value=item.calories;
+    calInput.inputMode='numeric';
+    calInput.style.cssText='font-size:16px;font-weight:700;color:#007aff;border:none;border-bottom:2px solid #007aff;background:transparent;width:60px;text-align:right;outline:none;padding:0;';
+    (function(i){
+      calInput.addEventListener('change',function(){inlineEditItem(i,this.value);});
+      calInput.addEventListener('focus',function(){this.select();});
+    })(idx);
+
+    const calLabel=document.createElement('span');
+    calLabel.textContent='cal';
+    calLabel.style.cssText='font-size:13px;color:#aaa;';
+
+    // Delete button
+    const delBtn=document.createElement('button');
+    delBtn.textContent='×';
+    delBtn.style.cssText='background:none;border:none;color:#ff3b30;font-size:22px;cursor:pointer;line-height:1;padding:0;font-weight:300;';
+    (function(i){
+      delBtn.addEventListener('click',function(){deleteDetailItem(i);});
+    })(idx);
+
+    right.appendChild(calInput);
+    right.appendChild(calLabel);
+    right.appendChild(delBtn);
+    row.appendChild(name);
+    row.appendChild(right);
+    container.appendChild(row);
+  });
+
+  // Add Item button
+  const addRow=document.createElement('div');
+  addRow.style.cssText='padding:14px 20px;border-top:1px solid #f5f5f5;';
+  const addBtn=document.createElement('button');
+  addBtn.textContent='+ Add Item';
+  addBtn.style.cssText='background:#f2f2f7;border:none;border-radius:12px;padding:12px 20px;font-size:15px;font-weight:600;color:#007aff;cursor:pointer;width:100%;';
+  addBtn.addEventListener('click',function(){addDetailItem();});
+  addRow.appendChild(addBtn);
+  container.appendChild(addRow);
 }
+
 
 function openItemEdit(idx,name,cal){
   editingItemIdx=idx;
@@ -777,11 +822,12 @@ async function handlePhoto(event,mode){
       // Snap handles meals, single items, barcodes and nutrition labels
       const text=await callGPT([{role:'user',content:[
         {type:'image_url',image_url:{url:`data:image/jpeg;base64,${b64}`,detail:'low'}},
-        {type:'text',text:'This could be a meal, a single food item, a barcode, or a nutrition label. Identify all food items and their calories. If it is a barcode or packaged product, read the product name and use the nutrition label calories per serving if visible, otherwise estimate. Return ONLY JSON: [{"name":"item name","calories":number,"notes":"portion or serving size"}]. Be specific and accurate.'}
+        {type:'text',text:'Analyze this image carefully. If it shows a meal, list each individual ingredient or component separately with its estimated calories (e.g. for a burger: bun, beef patty, cheese, lettuce, sauce separately). If it is a single packaged item or barcode, identify the product and calories per serving. Return ONLY a JSON array: [{"name":"ingredient","calories":number,"notes":"portion"}]. Be thorough and specific.'}
       ]}],350);
       const items=JSON.parse(text.replace(/```json|```/g,'').trim()).map(i=>({...i,id:String(Date.now()+Math.random())}));
       const total=items.reduce((s,i)=>s+(i.calories||0),0);
-      const title=items.length===1?items[0].name:items.slice(0,2).map(i=>i.name).join(', ')+(items.length>2?'...':'');
+      // Use the original text as the meal title for voice/type logs
+    const title=text.length<40?text:text.slice(0,37)+'...';
       const meal={id:String(Date.now()),items,imageData:compressed,time:t,title,source:'photo'};
       updateTodayData(d=>({...d,meals:[...(d.meals||[]),meal]}));
       showToast(`✅ ${items.length} item${items.length>1?'s':''}, ${total} cal — tap to edit`,5000);
@@ -828,7 +874,7 @@ async function processTextLog(text,source){
   document.getElementById('analyzingBar').classList.remove('hidden');
   showToast('Analyzing "'+text+'"...');
   try{
-    const result=await callGPT([{role:'user',content:`The user logged: "${text}". Extract all food items and estimate calories. Return ONLY JSON array: [{"name":"item","calories":number,"notes":"portion"}].`}],300);
+    const result=await callGPT([{role:'user',content:`The user logged: "${text}". Break this down into individual ingredients or components and estimate calories for each. For example if someone says "chicken shawarma" list pita, chicken, sauce, veggies etc separately. If they list multiple foods, break each one into its components. Return ONLY a JSON array: [{"name":"ingredient","calories":number,"notes":"portion"}]. Be specific and thorough.`}],400);
     const items=JSON.parse(result.replace(/```json|```/g,'').trim()).map(i=>({...i,id:String(Date.now()+Math.random())}));
     const total=items.reduce((s,i)=>s+(i.calories||0),0);
     const title=items.length===1?items[0].name:items.slice(0,2).map(i=>i.name).join(', ')+(items.length>2?'...':'');

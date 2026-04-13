@@ -356,6 +356,7 @@
       <div class="detail-total-label">total calories</div>
     </div>
   </div>
+  <div class="analyzing-bar hidden" id="analyzingBarDetail">Updating meal...</div>
   <div class="detail-items" id="detailItems"></div>
 
   <!-- Fix with AI -->
@@ -500,76 +501,54 @@ function renderHome(){
 }
 
 function renderMealLog(data){
-  const c=document.getElementById('mealLog'),t=document.getElementById('mealSectionTitle');
+  var c=document.getElementById('mealLog');
+  var t=document.getElementById('mealSectionTitle');
   if(!data.meals||!data.meals.length){c.innerHTML='';t.innerHTML='';return;}
   t.innerHTML='<div class="section-title">Meals Today</div>';
   c.innerHTML='';
-  [...data.meals].reverse().forEach(function(meal){
-    const total=meal.items.reduce(function(s,i){return s+(i.calories||0);},0);
-    const desc=meal.items.length>1?meal.items.slice(0,2).map(function(i){return i.name;}).join(', ')+(meal.items.length>2?'...':''):meal.items[0]?meal.items[0].name:'Meal';
-    const div=document.createElement('div');
-    div.className='meal-card';
-    div.style.cursor='pointer';
-    div.style.display='flex';
-    div.style.alignItems='stretch';
-    div.style.background='#fff';
-    div.style.margin='0 16px 10px';
-    div.style.borderRadius='18px';
-    div.style.overflow='hidden';
-    div.style.boxShadow='0 2px 10px rgba(0,0,0,0.07)';
-    div.style.border='1px solid #efefef';
+  var reversed=[...data.meals].reverse();
+  for(var mi=0;mi<reversed.length;mi++){
+    (function(meal){
+      var total=0;
+      for(var ii=0;ii<meal.items.length;ii++) total+=(meal.items[ii].calories||0);
+      var names=meal.items.slice(0,2).map(function(i){return i.name;}).join(', ')+(meal.items.length>2?'...':'');
 
-    // Thumb
-    const thumb=document.createElement('div');
-    thumb.className='meal-card-thumb';
-    
-    if(meal.imageData){
-      const img=document.createElement('img');
-      img.src=meal.imageData;
-      img.style.width='80px';
-      img.style.height='100%';
-      img.style.objectFit='cover';
-      
-      thumb.appendChild(img);
-    } else {
-      thumb.textContent='No photo';
-    }
+      var card=document.createElement('div');
+      card.style.cssText='background:#fff;margin:0 16px 10px;border-radius:18px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.07);border:1px solid #efefef;display:flex;align-items:stretch;cursor:pointer;';
 
-    // Body
-    const body=document.createElement('div');
-    body.className='meal-card-body';
-    body.style.flex='1';
-    body.style.padding='11px 14px';
-    
-    body.innerHTML='<div class="meal-card-title">'+( meal.title||desc)+'</div>'
-      +'<div class="meal-card-meta">'
-      +'<div class="meal-card-items">'+meal.items.length+' item'+(meal.items.length!==1?'s':'')+' · '+(meal.time||'')+'</div>'
-      +'<div class="meal-card-cals">'+total.toLocaleString()+'<span style="font-size:12px;font-weight:400;color:#aaa"> cal</span></div>'
-      +'</div>'
-      +'<div class="meal-card-tap">Tap to view & edit</div>';
+      var thumb=document.createElement('div');
+      thumb.style.cssText='width:80px;min-height:80px;background:#f7f7f7;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:12px;color:#ccc;font-weight:600;';
+      if(meal.imageData){
+        var img=document.createElement('img');
+        img.src=meal.imageData;
+        img.style.cssText='width:80px;height:100%;object-fit:cover;';
+        thumb.appendChild(img);
+      } else {
+        thumb.textContent='No photo';
+      }
 
-    // Delete button
-    const delBtn=document.createElement('button');
-    delBtn.textContent='Remove';
-    delBtn.style.cssText='background:none;border:none;color:#ff3b30;font-size:12px;font-weight:600;cursor:pointer;padding:0 12px;flex-shrink:0;';
-    (function(id){
-      delBtn.addEventListener('click',function(e){
-        e.stopPropagation();
-        deleteMeal(id);
-      });
-    })(String(meal.id));
+      var body=document.createElement('div');
+      body.style.cssText='flex:1;padding:11px 14px;min-width:0;';
+      body.innerHTML='<div style="font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(meal.title||names)+'</div>'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px;">'
+        +'<div style="font-size:12px;color:#aaa;">'+meal.items.length+' item'+(meal.items.length!==1?'s':'')+' · '+(meal.time||'')+'</div>'
+        +'<div style="font-size:20px;font-weight:800;">'+total.toLocaleString()+'<span style="font-size:12px;font-weight:400;color:#aaa;"> cal</span></div>'
+        +'</div>'
+        +'<div style="font-size:11px;color:#007aff;margin-top:4px;font-weight:500;">Tap to view & edit</div>';
 
-    div.appendChild(thumb);
-    div.appendChild(body);
-    div.appendChild(delBtn);
+      var delBtn=document.createElement('button');
+      delBtn.textContent='Remove';
+      delBtn.style.cssText='background:none;border:none;color:#ff3b30;font-size:12px;font-weight:600;cursor:pointer;padding:0 12px;flex-shrink:0;align-self:center;';
+      delBtn.onclick=function(e){ e.stopPropagation(); deleteMeal(meal.id); };
 
-    var mealIdStr = String(meal.id);
-    div.addEventListener('click',function(){
-      openMealDetail(mealIdStr);
-    });
+      card.appendChild(thumb);
+      card.appendChild(body);
+      card.appendChild(delBtn);
+      card.onclick=function(){ openMealDetail(meal.id); };
 
-    c.appendChild(div);
-  });
+      c.appendChild(card);
+    })(reversed[mi]);
+  }
 }
 
 function renderExLog(data){
@@ -588,10 +567,21 @@ function renderExLog(data){
 // ─── MEAL DETAIL ──────────────────────────────────────────
 function openMealDetail(mealId){
   currentMealId=String(mealId);
-  const data=getTodayData();
-  const meal=data.meals.find(m=>String(m.id)===String(mealId));
-  if(!meal){showToast('Meal not found - try again');return;}
-  renderDetailScreen(meal);
+  // Search ALL days for this meal
+  var foundMeal=null;
+  var foundDay=null;
+  Object.keys(logs).forEach(function(day){
+    if(logs[day].meals){
+      logs[day].meals.forEach(function(m){
+        if(String(m.id)===String(mealId)){foundMeal=m;foundDay=day;}
+      });
+    }
+  });
+  if(!foundMeal){
+    showToast('Could not find meal');
+    return;
+  }
+  renderDetailScreen(foundMeal);
   showScreen('detailScreen');
 }
 
@@ -728,7 +718,7 @@ async function applyFix(correction){
   const k=todayKey();
   const meal=logs[k].meals.find(m=>m.id===currentMealId);
   if(!meal)return;
-  document.getElementById('analyzingBar').classList.remove('hidden');
+  document.getElementById('analyzingBarDetail').classList.remove('hidden');
   try{
     const currentItems=JSON.stringify(meal.items.map(i=>({name:i.name,calories:i.calories})));
     const text=await callGPT([{role:'user',content:`Current meal items: ${currentItems}. User says: "${correction}". Update the meal based on this correction. Return ONLY the updated JSON array: [{"name":"item","calories":number,"notes":"portion"}]. Keep items not mentioned unchanged.`}],400);
@@ -739,7 +729,7 @@ async function applyFix(correction){
     renderDetailScreen(meal);
     showToast('✅ Meal updated!',5000);
   }catch(err){showToast('❌ '+(err.message||'Failed'),7000);}
-  document.getElementById('analyzingBar').classList.add('hidden');
+  document.getElementById('analyzingBarDetail').classList.add('hidden');
 }
 
 // ─── GPT ──────────────────────────────────────────────────
@@ -797,7 +787,7 @@ async function handlePhoto(event,mode){
       showToast(`✅ ${items.length} item${items.length>1?'s':''}, ${total} cal — tap to edit`,5000);
     }
   }catch(err){showToast('❌ '+(err.message||'Failed'),7000);}
-  document.getElementById('analyzingBar').classList.add('hidden');
+  document.getElementById('analyzingBarDetail').classList.add('hidden');
 }
 
 // ─── VOICE ────────────────────────────────────────────────
@@ -846,7 +836,7 @@ async function processTextLog(text,source){
     updateTodayData(d=>({...d,meals:[...(d.meals||[]),meal]}));
     showToast('✅ '+items.map(i=>i.name+' ('+i.calories+' cal)').join(', '),6000);
   }catch(err){showToast('❌ '+(err.message||'Failed'),7000);}
-  document.getElementById('analyzingBar').classList.add('hidden');
+  document.getElementById('analyzingBarDetail').classList.add('hidden');
 }
 
 // ─── EXERCISE ─────────────────────────────────────────────

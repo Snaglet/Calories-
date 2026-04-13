@@ -828,8 +828,7 @@ async function handlePhoto(event,mode){
       ]}],350);
       const items=JSON.parse(text.replace(/```json|```/g,'').trim()).map(i=>({...i,id:String(Date.now()+Math.random())}));
       const total=items.reduce((s,i)=>s+(i.calories||0),0);
-      // Use the original text as the meal title for voice/type logs
-    const title=text.length<40?text:text.slice(0,37)+'...';
+      const title=items.length===1?items[0].name:(items.length<=3?items.map(i=>i.name).join(', '):items[0].name+' + '+(items.length-1)+' more');
       const meal={id:String(Date.now()),items,imageData:compressed,time:t,title,source:'photo'};
       updateTodayData(d=>({...d,meals:[...(d.meals||[]),meal]}));
       showToast(`✅ ${items.length} item${items.length>1?'s':''}, ${total} cal — tap to edit`,5000);

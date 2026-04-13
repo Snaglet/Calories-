@@ -544,7 +544,7 @@ function renderMealLog(data){
       card.appendChild(thumb);
       card.appendChild(body);
       card.appendChild(delBtn);
-      card.onclick=function(){ openMealDetail(meal.id); };
+      card.onclick=function(){ showToast('Opening meal...'); openMealDetail(meal.id); };
 
       c.appendChild(card);
     })(reversed[mi]);
@@ -567,18 +567,16 @@ function renderExLog(data){
 // ─── MEAL DETAIL ──────────────────────────────────────────
 function openMealDetail(mealId){
   currentMealId=String(mealId);
-  // Search ALL days for this meal
   var foundMeal=null;
-  var foundDay=null;
   Object.keys(logs).forEach(function(day){
     if(logs[day].meals){
       logs[day].meals.forEach(function(m){
-        if(String(m.id)===String(mealId)){foundMeal=m;foundDay=day;}
+        if(String(m.id)===String(mealId)){foundMeal=m;}
       });
     }
   });
   if(!foundMeal){
-    showToast('Could not find meal');
+    showToast('Meal ID: '+mealId+' not found in '+Object.keys(logs).length+' days');
     return;
   }
   renderDetailScreen(foundMeal);

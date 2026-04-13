@@ -553,17 +553,20 @@ function renderMealLog(data){
     const delBtn=document.createElement('button');
     delBtn.textContent='Remove';
     delBtn.style.cssText='background:none;border:none;color:#ff3b30;font-size:12px;font-weight:600;cursor:pointer;padding:0 12px;flex-shrink:0;';
-    delBtn.addEventListener('click',function(e){
-      e.stopPropagation();
-      deleteMeal(meal.id);
-    });
+    (function(id){
+      delBtn.addEventListener('click',function(e){
+        e.stopPropagation();
+        deleteMeal(id);
+      });
+    })(String(meal.id));
 
     div.appendChild(thumb);
     div.appendChild(body);
     div.appendChild(delBtn);
 
+    var mealIdStr = String(meal.id);
     div.addEventListener('click',function(){
-      openMealDetail(meal.id);
+      openMealDetail(mealIdStr);
     });
 
     c.appendChild(div);
@@ -585,10 +588,10 @@ function renderExLog(data){
 
 // ─── MEAL DETAIL ──────────────────────────────────────────
 function openMealDetail(mealId){
-  currentMealId=mealId;
+  currentMealId=String(mealId);
   const data=getTodayData();
-  const meal=data.meals.find(m=>m.id===mealId);
-  if(!meal)return;
+  const meal=data.meals.find(m=>String(m.id)===String(mealId));
+  if(!meal){showToast('Meal not found - try again');return;}
   renderDetailScreen(meal);
   showScreen('detailScreen');
 }

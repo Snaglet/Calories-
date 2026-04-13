@@ -579,8 +579,12 @@ function openMealDetail(mealId){
     showToast('Meal ID: '+mealId+' not found in '+Object.keys(logs).length+' days');
     return;
   }
-  renderDetailScreen(foundMeal);
-  showScreen('detailScreen');
+  try{
+    renderDetailScreen(foundMeal);
+    showScreen('detailScreen');
+  } catch(err){
+    showToast('Detail error: '+err.message, 8000);
+  }
 }
 
 function renderDetailScreen(meal){

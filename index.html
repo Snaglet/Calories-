@@ -503,36 +503,69 @@ function renderHome(){
 function renderMealLog(data){
   const c=document.getElementById('mealLog'),t=document.getElementById('mealSectionTitle');
   if(!data.meals||!data.meals.length){c.innerHTML='';t.innerHTML='';return;}
-  t.innerHTML='<div class="section-title">Today\'s Meals</div>';
+  t.innerHTML='<div class="section-title">Meals Today</div>';
   c.innerHTML='';
-  [...data.meals].reverse().forEach(meal=>{
-    const total=meal.items.reduce((s,i)=>s+(i.calories||0),0);
-    const desc=meal.items.length>1?meal.items.slice(0,2).map(i=>i.name).join(', ')+(meal.items.length>2?'...':''):meal.items[0]?.name||'Meal';
+  [...data.meals].reverse().forEach(function(meal){
+    const total=meal.items.reduce(function(s,i){return s+(i.calories||0);},0);
+    const desc=meal.items.length>1?meal.items.slice(0,2).map(function(i){return i.name;}).join(', ')+(meal.items.length>2?'...':''):meal.items[0]?meal.items[0].name:'Meal';
     const div=document.createElement('div');
     div.className='meal-card';
     div.style.cursor='pointer';
-    div.innerHTML=`
-      <div class="meal-card-thumb" style="pointer-events:none">${meal.imageData?`<img src="${meal.imageData}" alt="meal" style="pointer-events:none">`:'No photo'}</div>
-      <div class="meal-card-body" style="pointer-events:none">
-        <div class="meal-card-title">${meal.title||desc}</div>
-        <div class="meal-card-meta">
-          <div class="meal-card-items">${meal.items.length} item${meal.items.length!==1?'s':''} · ${meal.time||''}</div>
-          <div class="meal-card-cals">${total.toLocaleString()}<span style="font-size:12px;font-weight:400;color:#aaa"> cal</span></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
-          <div class="meal-card-tap">Tap to edit →</div>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;padding:0 12px;">
-        <button data-delid="${meal.id}" style="background:none;border:none;color:#ff3b30;font-size:12px;font-weight:600;cursor:pointer;padding:4px;pointer-events:all;">Remove</button>
-      </div>`;
-    // Tap card = open detail
-    div.addEventListener('click', ()=>openMealDetail(meal.id));
+    div.style.display='flex';
+    div.style.alignItems='stretch';
+    div.style.background='#fff';
+    div.style.margin='0 16px 10px';
+    div.style.borderRadius='18px';
+    div.style.overflow='hidden';
+    div.style.boxShadow='0 2px 10px rgba(0,0,0,0.07)';
+    div.style.border='1px solid #efefef';
+
+    // Thumb
+    const thumb=document.createElement('div');
+    thumb.className='meal-card-thumb';
+    thumb.style.pointerEvents='none';
+    if(meal.imageData){
+      const img=document.createElement('img');
+      img.src=meal.imageData;
+      img.style.width='80px';
+      img.style.height='100%';
+      img.style.objectFit='cover';
+      img.style.pointerEvents='none';
+      thumb.appendChild(img);
+    } else {
+      thumb.textContent='No photo';
+    }
+
+    // Body
+    const body=document.createElement('div');
+    body.className='meal-card-body';
+    body.style.flex='1';
+    body.style.padding='11px 14px';
+    body.style.pointerEvents='none';
+    body.innerHTML='<div class="meal-card-title">'+( meal.title||desc)+'</div>'
+      +'<div class="meal-card-meta">'
+      +'<div class="meal-card-items">'+meal.items.length+' item'+(meal.items.length!==1?'s':'')+' · '+(meal.time||'')+'</div>'
+      +'<div class="meal-card-cals">'+total.toLocaleString()+'<span style="font-size:12px;font-weight:400;color:#aaa"> cal</span></div>'
+      +'</div>'
+      +'<div class="meal-card-tap">Tap to view & edit</div>';
+
     // Delete button
-    div.querySelector(`#del-${meal.id.replace(/\./g,'\\.')}`).addEventListener('click', (e)=>{
+    const delBtn=document.createElement('button');
+    delBtn.textContent='Remove';
+    delBtn.style.cssText='background:none;border:none;color:#ff3b30;font-size:12px;font-weight:600;cursor:pointer;padding:0 12px;flex-shrink:0;';
+    delBtn.addEventListener('click',function(e){
       e.stopPropagation();
       deleteMeal(meal.id);
     });
+
+    div.appendChild(thumb);
+    div.appendChild(body);
+    div.appendChild(delBtn);
+
+    div.addEventListener('click',function(){
+      openMealDetail(meal.id);
+    });
+
     c.appendChild(div);
   });
 }

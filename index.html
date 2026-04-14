@@ -73,10 +73,9 @@
   .stat-val{font-size:18px;font-weight:700;}
   .stat-act{font-size:11px;color:#007aff;margin-top:5px;font-weight:600;}
 
-  /* MEAL CARDS - one per photo/log session */
+  /* MEAL CARDS */
   .section-title{font-size:20px;font-weight:800;padding:4px 20px 10px;}
   .meal-card{background:#fff;margin:0 16px 10px;border-radius:18px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.07);border:1px solid #efefef;cursor:pointer;display:flex;align-items:stretch;}
-
   .meal-card-thumb{width:80px;min-height:80px;background:#f7f7f7;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:12px;color:#ccc;font-weight:600;text-align:center;padding:4px;}
   .meal-card-thumb img{width:80px;height:100%;object-fit:cover;}
   .meal-card-body{flex:1;padding:11px 14px;min-width:0;}
@@ -212,13 +211,14 @@
     <div class="modal-btns"><button class="modal-cancel" onclick="closeItemEdit()">Cancel</button><button class="modal-confirm" onclick="saveItemEdit()">Save</button></div>
   </div>
 </div>
+<!-- FIX: added missing id="addItemCal" input -->
 <div class="modal-overlay hidden" id="addItemModal">
   <div class="modal"><div class="modal-title">Add Item</div>
     <input type="text" id="addItemName" placeholder="e.g. Side salad, 1 tbsp butter">
+    <input type="number" id="addItemCal" placeholder="Calories (optional — AI will estimate)" inputmode="numeric">
     <div class="modal-btns"><button class="modal-cancel" onclick="closeAddItemModal()">Cancel</button><button class="modal-confirm" onclick="saveAddItem()">Add</button></div>
   </div>
 </div>
-
 <div class="modal-overlay hidden" id="editTitleModal">
   <div class="modal">
     <div class="modal-title">Edit Meal Name</div>
@@ -229,8 +229,6 @@
 
 <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event,'food')">
 <input type="file" id="photoLibraryInput" accept="image/*" style="display:none" onchange="handlePhoto(event,'food')">
-
-
 
 <!-- ═══════════════ HOME SCREEN ═══════════════ -->
 <div class="screen active" id="homeScreen">
@@ -285,11 +283,9 @@
       <div class="log-btn-label">Type</div>
       <div class="log-btn-sub">Write it out</div>
     </button>
-
   </div>
-
-  <!-- Stat cards -->
   </div><!-- end logBtnsSection -->
+
   <div class="stat-cards">
     <div class="stat-card" onclick="openExModal()">
       <div class="stat-lbl">Exercise</div>
@@ -310,11 +306,8 @@
 
   <div class="analyzing-bar hidden" id="analyzingBar">Analyzing your food...</div>
 
-  <!-- Meal log -->
   <div id="mealSectionTitle"></div>
   <div id="mealLog"></div>
-
-  <!-- Exercise log -->
   <div id="exLog"></div>
 
   <div class="bottom-nav">
@@ -378,7 +371,6 @@
   <div class="analyzing-bar hidden" id="analyzingBarDetail">Updating meal...</div>
   <div class="detail-items" id="detailItems"></div>
 
-  <!-- Fix with AI -->
   <button class="fix-ai-btn" id="fixAiBtn" onclick="startFixVoice()">Fix with AI</button>
   <div id="fixInput" style="display:none"></div>
 
@@ -394,12 +386,12 @@ let goal=parseInt(localStorage.getItem('cal-goal')||'1800');
 let logs={};try{logs=JSON.parse(localStorage.getItem(STORE_KEY)||'{}');}catch{}
 let barcodeMemory={};try{barcodeMemory=JSON.parse(localStorage.getItem(BARCODE_KEY)||'{}');}catch{}
 let currentMealId=null,editingItemIdx=null,isRecording=false,isFixRecording=false,recognition=null,fixRecognition=null;
+let _editingExId=null;
 
 // ─── HELPERS ──────────────────────────────────────────────
 function todayKey(){return new Date().toISOString().split('T')[0];}
 function getTodayData(){
   const d=logs[_viewingDay||todayKey()]||{meals:[],steps:null,exercise:[]};
-  // Migrate old 'items' format to 'meals' format
   if(!d.meals&&d.items){
     d.meals=[{id:String(Date.now()),items:d.items,time:'',title:'Meal',source:'migrated'}];
     delete d.items;
@@ -438,24 +430,31 @@ function saveGoalFromSettings(){const v=parseInt(document.getElementById('goalSe
 
 // ─── APPLE HEALTH STEPS ───────────────────────────────────
 function requestHealthSteps(){
-  // Try Apple Health via DeviceMotion/webkit bridge — fallback to manual entry
   if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.getSteps){
     window.webkit.messageHandlers.getSteps.postMessage({});
     showToast('Requesting steps from Health app...',3000);
   } else {
-    // Fallback: manual entry
     openStepsModal();
   }
 }
-// Called by native bridge if available
 window.receiveSteps=function(steps){
   updateTodayData(d=>({...d,steps:parseInt(steps)||0}));
   showToast(`✅ Steps synced: ${parseInt(steps).toLocaleString()}`,4000);
 };
+function estimateStepCalories(steps){return Math.round((steps||0)*0.04);}
 
-function estimateStepCalories(steps){
-  // ~0.04 cal per step (average)
-  return Math.round((steps||0)*0.04);
+// ─── FIX: openStepsModal / closeStepsModal / saveSteps ────
+function openStepsModal(){
+  const d=getTodayData();
+  document.getElementById('stepsInput').value=d.steps||'';
+  document.getElementById('stepsModal').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('stepsInput').focus(),100);
+}
+function closeStepsModal(){document.getElementById('stepsModal').classList.add('hidden');}
+function saveSteps(){
+  const v=parseInt(document.getElementById('stepsInput').value);
+  if(!isNaN(v)&&v>=0){updateTodayData(d=>({...d,steps:v}));showToast('✅ Steps saved!');}
+  closeStepsModal();
 }
 
 // ─── WEEK STRIP ───────────────────────────────────────────
@@ -518,7 +517,6 @@ function renderHome(){
   document.getElementById('progressRing').setAttribute('stroke',foodCals>effectiveGoal?'#ff3b30':'#000');
   document.getElementById('streakCount').textContent=calcStreak();
 
-  // Steps display
   if(data.steps){
     document.getElementById('stepsVal').textContent=data.steps.toLocaleString();
     document.getElementById('stepsAct').textContent=`~${stepCals} cal burned`;
@@ -529,7 +527,6 @@ function renderHome(){
     document.getElementById('stepsAct').style.color='#007aff';
   }
 
-  // Net label
   let netParts=[];
   if(exCals>0)netParts.push(`${exCals} ex`);
   if(stepCals>0&&data.steps)netParts.push(`${stepCals} steps`);
@@ -554,16 +551,13 @@ function renderMealLog(data){
       var names=meal.items.slice(0,2).map(function(i){return i.name;}).join(', ')+(meal.items.length>2?'...':'');
       var displayTitle=(meal.title||names).replace(/```json|```/g,'').trim();
 
-      // Swipe wrapper
       var wrap=document.createElement('div');
       wrap.className='swipe-wrap';
 
-      // Delete bg
       var delBg=document.createElement('div');
       delBg.className='swipe-del';
       delBg.textContent='Delete';
 
-      // Card (swipe item)
       var card=document.createElement('div');
       card.className='swipe-item';
       card.style.cssText='background:#fff;display:flex;align-items:stretch;border-radius:18px;box-shadow:0 2px 10px rgba(0,0,0,0.07);border:1px solid #efefef;cursor:pointer;';
@@ -614,6 +608,40 @@ function renderExLog(data){
     </div>`).join('');
 }
 
+// ─── EXERCISE MODAL ───────────────────────────────────────
+function openExModal(){
+  document.getElementById('exNameInput').value='';
+  document.getElementById('exCalInput').value='';
+  document.getElementById('exModal').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('exNameInput').focus(),100);
+}
+function closeExModal(){document.getElementById('exModal').classList.add('hidden');}
+function saveExercise(){
+  const label=document.getElementById('exNameInput').value.trim();
+  const cal=parseInt(document.getElementById('exCalInput').value);
+  if(!label){showToast('Enter an activity name');return;}
+  if(isNaN(cal)||cal<=0){showToast('Enter calories burned');return;}
+  updateTodayData(d=>({...d,exercise:[...(d.exercise||[]),{id:String(Date.now()),label,calories:cal}]}));
+  showToast('✅ Exercise logged!');
+  closeExModal();
+}
+function deleteExercise(id){updateTodayData(d=>({...d,exercise:(d.exercise||[]).filter(e=>e.id!==id)}));}
+function openEditExercise(id,label,cal){
+  _editingExId=id;
+  document.getElementById('editExName').value=label;
+  document.getElementById('editExCal').value=cal;
+  document.getElementById('editExModal').classList.remove('hidden');
+}
+function closeEditExercise(){document.getElementById('editExModal').classList.add('hidden');_editingExId=null;}
+function saveEditExercise(){
+  const label=document.getElementById('editExName').value.trim();
+  const cal=parseInt(document.getElementById('editExCal').value);
+  if(!label||isNaN(cal))return;
+  updateTodayData(d=>({...d,exercise:(d.exercise||[]).map(e=>e.id===_editingExId?{...e,label,calories:cal}:e)}));
+  closeEditExercise();
+  showToast('✅ Updated!');
+}
+
 // ─── MEAL DETAIL ──────────────────────────────────────────
 function openMealDetail(mealId){
   currentMealId=String(mealId);
@@ -625,24 +653,16 @@ function openMealDetail(mealId){
       });
     }
   });
-  if(!foundMeal){
-    showToast('Meal ID: '+mealId+' not found in '+Object.keys(logs).length+' days');
-    return;
-  }
-  try{
-    renderDetailScreen(foundMeal);
-    showScreen('detailScreen');
-  } catch(err){
-    showToast('Detail error: '+err.message, 8000);
-  }
+  if(!foundMeal){showToast('Meal not found');return;}
+  renderDetailScreen(foundMeal);
+  showScreen('detailScreen');
 }
 
 function renderDetailScreen(meal){
   const total=meal.items.reduce((s,i)=>s+(i.calories||0),0);
   document.getElementById('detailTitle').textContent=meal.time||'Meal';
   var cleanTitle=(meal.title||meal.items.map(i=>i.name).join(', ')).replace(/```json|```/g,'').trim();
-  document.getElementById('detailDesc').textContent=cleanTitle;
-  document.getElementById('detailDesc').title='Tap to edit name';
+  document.getElementById('detailDesc').textContent=cleanTitle+' ✎';
   document.getElementById('detailTotal').textContent=total.toLocaleString();
   document.getElementById('detailImg').innerHTML=meal.imageData
     ?'<img class="detail-img" src="'+meal.imageData+'" alt="meal">'
@@ -652,16 +672,13 @@ function renderDetailScreen(meal){
   container.innerHTML='';
 
   meal.items.forEach(function(item, idx){
-    // Swipe wrapper
     var wrap=document.createElement('div');
     wrap.className='detail-swipe-wrap';
 
-    // Delete bg
     var delBg=document.createElement('div');
     delBg.className='detail-del';
     delBg.textContent='Delete';
 
-    // Row (swipe item)
     var row=document.createElement('div');
     row.className='detail-swipe-item';
     row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:14px 20px;background:#fff;';
@@ -711,20 +728,12 @@ function renderDetailScreen(meal){
   container.appendChild(addRow);
 }
 
-
-function openItemEdit(idx,name,cal){
-  editingItemIdx=idx;
-  document.getElementById('itemEditTitle').textContent='Edit: '+name;
-  document.getElementById('itemEditInput').value=cal;
-  document.getElementById('itemEditModal').classList.remove('hidden');
-  setTimeout(()=>document.getElementById('itemEditInput').focus(),100);
-}
-function closeItemEdit(){document.getElementById('itemEditModal').classList.add('hidden');editingItemIdx=null;}
-function inlineEditItem(idx, val){
+function inlineEditItem(idx,val){
   const v=parseInt(val);
   if(isNaN(v)||v<0)return;
-  const k=todayKey();
-  const meal=logs[k].meals.find(m=>m.id===currentMealId);
+  const k=_viewingDay||todayKey();
+  if(!logs[k])return;
+  const meal=logs[k].meals.find(m=>String(m.id)===String(currentMealId));
   if(meal&&meal.items[idx]){
     meal.items[idx].calories=v;
     saveLogs();
@@ -735,7 +744,8 @@ function inlineEditItem(idx, val){
 }
 
 function deleteDetailItem(idx){
-  const k=todayKey();
+  const k=_viewingDay||todayKey();
+  if(!logs[k])return;
   const meal=logs[k].meals.find(m=>String(m.id)===String(currentMealId));
   if(!meal)return;
   meal.items.splice(idx,1);
@@ -753,17 +763,31 @@ function addDetailItem(){
 function closeAddItemModal(){document.getElementById('addItemModal').classList.add('hidden');}
 async function saveAddItem(){
   const name=document.getElementById('addItemName').value.trim();
+  const manualCal=parseInt(document.getElementById('addItemCal').value);
   if(!name){showToast('Enter an item name');return;}
   closeAddItemModal();
+
+  const k=_viewingDay||todayKey();
+  if(!logs[k])return;
+  const meal=logs[k].meals.find(m=>String(m.id)===String(currentMealId));
+  if(!meal)return;
+
+  // If manual cal entered, skip AI
+  if(!isNaN(manualCal)&&manualCal>0){
+    meal.items.push({id:String(Date.now()),name,calories:manualCal,notes:''});
+    saveLogs();
+    renderDetailScreen(meal);
+    showToast('✅ Added '+name+' ('+manualCal+' cal)');
+    return;
+  }
+
+  // Otherwise estimate with AI
   showToast('Estimating calories...');
   document.getElementById('analyzingBarDetail').classList.remove('hidden');
   try{
     const result=await callGPT([{role:'user',content:'Estimate calories for: "'+name+'". Return ONLY JSON: [{"name":"'+name+'","calories":number,"notes":"portion"}]'}],100);
     const items=JSON.parse(result.replace(/```json|```/g,'').trim());
     const cal=items[0]?items[0].calories:0;
-    const k=todayKey();
-    const meal=logs[k].meals.find(m=>String(m.id)===String(currentMealId));
-    if(!meal)return;
     meal.items.push({id:String(Date.now()),name:items[0]?items[0].name:name,calories:cal,notes:items[0]?items[0].notes:''});
     saveLogs();
     renderDetailScreen(meal);
@@ -772,30 +796,289 @@ async function saveAddItem(){
   document.getElementById('analyzingBarDetail').classList.add('hidden');
 }
 
-// ─── INIT ─────────────────────────────────────────────────
-_lastRenderedDay = todayKey();
+// ─── FIX: closeTypeModal / submitTextLog ──────────────────
+function closeTypeModal(){document.getElementById('typeModal').classList.add('hidden');}
+async function submitTextLog(){
+  const text=document.getElementById('typeInput').value.trim();
+  if(!text){showToast('Enter what you ate');return;}
+  closeTypeModal();
+  document.getElementById('analyzingBar').classList.remove('hidden');
+  showToast('Estimating calories...');
+  try{
+    const result=await callGPT([{role:'user',content:'Estimate calories for: "'+text+'". Return ONLY a JSON array: [{"name":"item","calories":number,"notes":"portion info"}]. No markdown.'}],300);
+    const items=JSON.parse(result.replace(/```json|```/g,'').trim());
+    const meal={id:String(Date.now()),items,time:timeLabel(),title:text,source:'text',imageData:null};
+    updateTodayData(d=>({...d,meals:[...(d.meals||[]),meal]}));
+    const total=items.reduce((s,i)=>s+(i.calories||0),0);
+    showToast('✅ Logged '+total+' cal');
+  }catch(err){showToast('❌ '+(err.message||'Failed'));}
+  document.getElementById('analyzingBar').classList.add('hidden');
+}
 
-document.addEventListener('visibilitychange', function(){
-  if(document.visibilityState==='visible'){
-    var today = todayKey();
-    if(_lastRenderedDay !== today){
-      _viewingDay = null;
-      _lastRenderedDay = today;
-      showToast('New day!', 3000);
-      switchTab('today');
+// ─── FIX: closeItemEdit / saveItemEdit ───────────────────
+function closeItemEdit(){document.getElementById('itemEditModal').classList.add('hidden');editingItemIdx=null;}
+function saveItemEdit(){
+  const v=parseInt(document.getElementById('itemEditInput').value);
+  if(isNaN(v)||v<0){showToast('Enter a valid calorie amount');return;}
+  if(editingItemIdx===null)return;
+  const k=_viewingDay||todayKey();
+  if(!logs[k])return;
+  const meal=logs[k].meals.find(m=>String(m.id)===String(currentMealId));
+  if(meal&&meal.items[editingItemIdx]){
+    meal.items[editingItemIdx].calories=v;
+    saveLogs();
+    renderDetailScreen(meal);
+    showToast('✅ Updated!',2000);
+  }
+  closeItemEdit();
+}
+
+// ─── FIX: openEditTitle / closeEditTitle / saveEditTitle ──
+function openEditTitle(){
+  const k=_viewingDay||todayKey();
+  if(!logs[k])return;
+  const meal=logs[k].meals.find(m=>String(m.id)===String(currentMealId));
+  if(!meal)return;
+  const cleanTitle=(meal.title||'').replace(/```json|```/g,'').trim();
+  document.getElementById('editTitleInput').value=cleanTitle;
+  document.getElementById('editTitleModal').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('editTitleInput').focus(),100);
+}
+function closeEditTitle(){document.getElementById('editTitleModal').classList.add('hidden');}
+function saveEditTitle(){
+  const val=document.getElementById('editTitleInput').value.trim();
+  if(!val){closeEditTitle();return;}
+  const k=_viewingDay||todayKey();
+  if(!logs[k])return;
+  const meal=logs[k].meals.find(m=>String(m.id)===String(currentMealId));
+  if(meal){
+    meal.title=val;
+    saveLogs();
+    renderDetailScreen(meal);
+    showToast('✅ Name updated');
+  }
+  closeEditTitle();
+}
+
+// ─── FIX: startFixVoice / toggleFixVoice / submitFix ─────
+function startFixVoice(){
+  const fixInputDiv=document.getElementById('fixInput');
+  const isOpen=fixInputDiv.style.display!=='none';
+  if(isOpen){fixInputDiv.style.display='none';document.getElementById('fixAiBtn').textContent='Fix with AI';return;}
+  fixInputDiv.style.display='block';
+  document.getElementById('fixAiBtn').textContent='Close';
+  fixInputDiv.innerHTML=`
+    <div class="fix-panel">
+      <div class="fix-panel-title">Describe what to change</div>
+      <input type="text" class="fix-input" id="fixTextInput" placeholder="e.g. It was a large portion, add a diet coke">
+      <div class="fix-btns">
+        <button class="fix-voice-btn" id="fixVoiceBtn" onclick="toggleFixVoice()">🎙 Voice</button>
+        <button class="fix-submit-btn" onclick="submitFix()">Update with AI</button>
+      </div>
+    </div>`;
+}
+function toggleFixVoice(){
+  const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SpeechRecognition){showToast('Voice not supported on this browser');return;}
+  if(isFixRecording){fixRecognition&&fixRecognition.stop();return;}
+  fixRecognition=new SpeechRecognition();
+  fixRecognition.lang='en-US';fixRecognition.interimResults=false;
+  isFixRecording=true;
+  document.getElementById('fixVoiceBtn').textContent='⏹ Stop';
+  fixRecognition.onresult=function(e){
+    document.getElementById('fixTextInput').value=e.results[0][0].transcript;
+    isFixRecording=false;
+    document.getElementById('fixVoiceBtn').textContent='🎙 Voice';
+  };
+  fixRecognition.onerror=fixRecognition.onend=function(){
+    isFixRecording=false;
+    const btn=document.getElementById('fixVoiceBtn');
+    if(btn)btn.textContent='🎙 Voice';
+  };
+  fixRecognition.start();
+}
+async function submitFix(){
+  const text=document.getElementById('fixTextInput').value.trim();
+  if(!text){showToast('Describe what to fix');return;}
+  const k=_viewingDay||todayKey();
+  if(!logs[k])return;
+  const meal=logs[k].meals.find(m=>String(m.id)===String(currentMealId));
+  if(!meal)return;
+  document.getElementById('analyzingBarDetail').classList.remove('hidden');
+  showToast('Updating meal...');
+  try{
+    const existing=JSON.stringify(meal.items);
+    const result=await callGPT([{role:'user',content:'Current meal items: '+existing+'\n\nUser says: "'+text+'"\n\nReturn updated JSON array of ALL items (add/remove/adjust as needed): [{"name":"item","calories":number,"notes":"portion"}]. No markdown.'}],400);
+    const items=JSON.parse(result.replace(/```json|```/g,'').trim());
+    meal.items=items;
+    saveLogs();
+    renderDetailScreen(meal);
+    document.getElementById('fixInput').style.display='none';
+    document.getElementById('fixAiBtn').textContent='Fix with AI';
+    showToast('✅ Meal updated');
+  }catch(err){showToast('❌ '+(err.message||'Failed'));}
+  document.getElementById('analyzingBarDetail').classList.add('hidden');
+}
+
+// ─── FIX: startVoice ─────────────────────────────────────
+function startVoice(){
+  const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SpeechRecognition){showToast('Voice not supported on this browser');return;}
+  if(isRecording){recognition&&recognition.stop();return;}
+  recognition=new SpeechRecognition();
+  recognition.lang='en-US';recognition.interimResults=false;recognition.maxAlternatives=1;
+  isRecording=true;
+  document.getElementById('voiceBtn').classList.add('rec');
+  document.getElementById('micLabel').textContent='Listening...';
+  document.getElementById('micSub').textContent='Tap to stop';
+  recognition.onresult=function(e){
+    const transcript=e.results[0][0].transcript;
+    isRecording=false;
+    document.getElementById('voiceBtn').classList.remove('rec');
+    document.getElementById('micLabel').textContent='Voice';
+    document.getElementById('micSub').textContent='Say what you ate';
+    document.getElementById('typeInput').value=transcript;
+    submitTextLog();
+  };
+  recognition.onerror=function(){
+    isRecording=false;
+    document.getElementById('voiceBtn').classList.remove('rec');
+    document.getElementById('micLabel').textContent='Voice';
+    document.getElementById('micSub').textContent='Say what you ate';
+    showToast('Voice error — try again');
+  };
+  recognition.onend=function(){
+    if(isRecording){
+      isRecording=false;
+      document.getElementById('voiceBtn').classList.remove('rec');
+      document.getElementById('micLabel').textContent='Voice';
+      document.getElementById('micSub').textContent='Say what you ate';
     }
+  };
+  recognition.start();
+}
+
+// ─── PHOTO ────────────────────────────────────────────────
+async function handlePhoto(event){
+  const file=event.target.files[0];
+  if(!file)return;
+  event.target.value='';
+  document.getElementById('analyzingBar').classList.remove('hidden');
+  showToast('Analyzing photo...');
+  const reader=new FileReader();
+  reader.onload=async function(e){
+    const imageData=e.target.result;
+    const img=new Image();
+    img.onload=async function(){
+      const canvas=document.createElement('canvas');
+      const max=800;
+      let w=img.width,h=img.height;
+      if(w>max){h=Math.round(h*max/w);w=max;}
+      if(h>max){w=Math.round(w*max/h);h=max;}
+      canvas.width=w;canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      const compressed=canvas.toDataURL('image/jpeg',0.7);
+      const b64=compressed.split(',')[1];
+      try{
+        const result=await callGPT([{role:'user',content:[
+          {type:'image_url',image_url:{url:'data:image/jpeg;base64,'+b64}},
+          {type:'text',text:'List every food item visible. Return ONLY JSON array: [{"name":"item","calories":number,"notes":"portion"}]. No markdown.'}
+        ]}],400);
+        const items=JSON.parse(result.replace(/```json|```/g,'').trim());
+        const title=items.slice(0,2).map(i=>i.name).join(', ')+(items.length>2?'...':'');
+        const meal={id:String(Date.now()),items,time:timeLabel(),title,source:'photo',imageData:compressed};
+        updateTodayData(d=>({...d,meals:[...(d.meals||[]),meal]}));
+        const total=items.reduce((s,i)=>s+(i.calories||0),0);
+        showToast('✅ Logged '+total+' cal');
+      }catch(err){showToast('❌ '+(err.message||'Failed'));}
+      document.getElementById('analyzingBar').classList.add('hidden');
+    };
+    img.src=imageData;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ─── CALL GPT ─────────────────────────────────────────────
+async function callGPT(messages,maxTokens=500){
+  const res=await fetch('https://api.openai.com/v1/chat/completions',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},
+    body:JSON.stringify({model:'gpt-4o',messages,max_tokens:maxTokens})
+  });
+  const data=await res.json();
+  if(data.error)throw new Error(data.error.message);
+  return data.choices[0].message.content;
+}
+
+// ─── DELETE MEAL ──────────────────────────────────────────
+function deleteMeal(mealId){
+  updateTodayData(d=>({...d,meals:(d.meals||[]).filter(m=>String(m.id)!==String(mealId))}));
+  showToast('Deleted');
+}
+
+// ─── SWIPE ────────────────────────────────────────────────
+function addSwipe(wrap,onDelete){
+  const item=wrap.querySelector('.swipe-item')||wrap.querySelector('.detail-swipe-item');
+  const del=wrap.querySelector('.swipe-del')||wrap.querySelector('.detail-del');
+  if(!item)return;
+  let startX=0,currentX=0,swiping=false;
+  const threshold=60;
+  item.addEventListener('touchstart',function(e){startX=e.touches[0].clientX;swiping=true;},{passive:true});
+  item.addEventListener('touchmove',function(e){
+    if(!swiping)return;
+    currentX=e.touches[0].clientX-startX;
+    if(currentX<0){item.style.transform='translateX('+currentX+'px)';if(del)del.style.opacity=Math.min(-currentX/threshold,1);}
+  },{passive:true});
+  item.addEventListener('touchend',function(){
+    swiping=false;
+    if(currentX<-threshold){
+      item.style.transform='translateX(-90px)';
+      if(del){del.style.opacity='1';del.onclick=function(){onDelete();};}
+    } else {
+      item.style.transform='';
+      if(del)del.style.opacity='0';
+    }
+    currentX=0;
+  });
+}
+
+// ─── HISTORY ──────────────────────────────────────────────
+function renderHistory(){
+  const c=document.getElementById('historyList');
+  const keys=Object.keys(logs).sort().reverse();
+  if(!keys.length){c.innerHTML='<div style="text-align:center;padding:40px;color:#aaa;font-size:15px;">No history yet</div>';return;}
+  c.innerHTML='';
+  keys.forEach(function(key){
+    const d=logs[key];
+    if(!d||!d.meals||!d.meals.length)return;
+    const foodCals=d.meals.reduce((s,m)=>s+m.items.reduce((ss,i)=>ss+(i.calories||0),0),0);
+    const exCals=(d.exercise||[]).reduce((s,e)=>s+(e.calories||0),0);
+    const stepCals=estimateStepCalories(d.steps);
+    const net=foodCals-(exCals+stepCals);
+    const dateLabel=new Date(key+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const div=document.createElement('div');
+    div.className='history-day';
+    let rows=d.meals.map(m=>{
+      const mCal=m.items.reduce((s,i)=>s+(i.calories||0),0);
+      const title=(m.title||m.items.map(i=>i.name).join(', ')).replace(/```json|```/g,'').trim();
+      return`<div class="history-item-row"><span>${title}</span><span class="history-item-cal">${mCal} cal</span></div>`;
+    }).join('');
+    div.innerHTML=`<div class="history-day-header"><div><div class="history-date">${dateLabel}</div><div class="history-meta">${d.meals.length} meal${d.meals.length!==1?'s':''}</div></div><div class="history-net">${net.toLocaleString()} cal</div></div>${rows}`;
+    c.appendChild(div);
+  });
+}
+
+// ─── INIT ─────────────────────────────────────────────────
+_lastRenderedDay=todayKey();
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='visible'){
+    var today=todayKey();
+    if(_lastRenderedDay!==today){_viewingDay=null;_lastRenderedDay=today;showToast('New day!',3000);switchTab('today');}
   }
 });
 
-function getViewingData(){
-  var key = _viewingDay || todayKey();
-  var d = logs[key] || {meals:[],steps:null,exercise:[]};
-  if(!d.meals) d.meals = [];
-  return d;
-}
-
 renderHome();
-if(!apiKey) setTimeout(function(){showToast('Go to Settings to add your OpenAI key',6000);}, 800);
+if(!apiKey)setTimeout(function(){showToast('Go to Settings to add your OpenAI key',6000);},800);
 setTimeout(function(){
   if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.getSteps){
     window.webkit.messageHandlers.getSteps.postMessage({});

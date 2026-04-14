@@ -272,14 +272,14 @@
     </button>
   </div>
   <div class="log-btns">
-    <button class="log-btn voice" id="voiceBtn" onclick="checkKeyThen(startVoice)">
+    <button class="log-btn voice" id="voiceBtn" onclick="startVoice()">
       <div class="voice-bars">
         <div class="voice-bar b1"></div><div class="voice-bar b2"></div><div class="voice-bar b3"></div><div class="voice-bar b4"></div><div class="voice-bar b5"></div>
       </div>
       <div class="log-btn-label" id="micLabel">Voice</div>
       <div class="log-btn-sub" id="micSub">Say what you ate</div>
     </button>
-    <button class="log-btn typebtn" onclick="checkKeyThen(()=>document.getElementById('typeModal').classList.remove('hidden'))">
+    <button class="log-btn typebtn" onclick="document.getElementById('typeModal').classList.remove('hidden');setTimeout(()=>document.getElementById('typeInput').focus(),100)">
       <div class="log-btn-label">Type</div>
       <div class="log-btn-sub">Write it out</div>
     </button>
@@ -405,6 +405,7 @@ function saveLogs(){localStorage.setItem(STORE_KEY,JSON.stringify(logs));}
 function updateTodayData(fn){const k=_viewingDay||todayKey();logs[k]=fn(logs[k]||{meals:[],steps:null,exercise:[]});saveLogs();renderHome();}
 function showToast(msg,dur=5000){const t=document.getElementById('toast');t.textContent=msg;t.classList.remove('hidden');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.add('hidden'),dur);}
 function checkKeyThen(fn){if(!apiKey){showToast('Add your OpenAI key in Settings first');switchTab('settings');return;}fn();}
+function requireKey(){if(!apiKey){showToast('Add your OpenAI key in Settings first');switchTab('settings');return false;}return true;}
 function timeLabel(){const n=new Date();let h=n.getHours(),m=n.getMinutes(),ap=h>=12?'PM':'AM';h=h%12||12;return`${h}:${m.toString().padStart(2,'0')} ${ap}`;}
 function saveBarcodes(){localStorage.setItem(BARCODE_KEY,JSON.stringify(barcodeMemory));}
 
@@ -801,6 +802,7 @@ function closeTypeModal(){document.getElementById('typeModal').classList.add('hi
 async function submitTextLog(){
   const text=document.getElementById('typeInput').value.trim();
   if(!text){showToast('Enter what you ate');return;}
+  if(!requireKey())return;
   closeTypeModal();
   document.getElementById('analyzingBar').classList.remove('hidden');
   showToast('Estimating calories...');
@@ -937,6 +939,7 @@ function startVoice(){
     document.getElementById('voiceBtn').classList.remove('rec');
     document.getElementById('micLabel').textContent='Voice';
     document.getElementById('micSub').textContent='Say what you ate';
+    if(!requireKey())return;
     document.getElementById('typeInput').value=transcript;
     submitTextLog();
   };
@@ -962,11 +965,12 @@ function startVoice(){
 async function handlePhoto(event){
   const file=event.target.files[0];
   if(!file)return;
-  event.target.value='';
+  if(!requireKey()){event.target.value='';return;}
   document.getElementById('analyzingBar').classList.remove('hidden');
   showToast('Analyzing photo...');
   const reader=new FileReader();
   reader.onload=async function(e){
+    event.target.value='';
     const imageData=e.target.result;
     const img=new Image();
     img.onload=async function(){

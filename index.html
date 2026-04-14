@@ -388,6 +388,8 @@
 <script>
 const STORE_KEY='cal-v13',API_STORE='cal-oai-key',LAST_EX_KEY='cal-last-ex',BARCODE_KEY='cal-barcodes';
 let apiKey=localStorage.getItem(API_STORE)||'';
+var _viewingDay=null;
+var _lastRenderedDay=null;
 let goal=parseInt(localStorage.getItem('cal-goal')||'1800');
 let logs={};try{logs=JSON.parse(localStorage.getItem(STORE_KEY)||'{}');}catch{}
 let barcodeMemory={};try{barcodeMemory=JSON.parse(localStorage.getItem(BARCODE_KEY)||'{}');}catch{}
@@ -396,7 +398,7 @@ let currentMealId=null,editingItemIdx=null,isRecording=false,isFixRecording=fals
 // ─── HELPERS ──────────────────────────────────────────────
 function todayKey(){return new Date().toISOString().split('T')[0];}
 function getTodayData(){
-  const d=logs[(typeof _viewingDay!=="undefined"&&_viewingDay)||todayKey()]||{meals:[],steps:null,exercise:[]};
+  const d=logs[_viewingDay||todayKey()]||{meals:[],steps:null,exercise:[]};
   // Migrate old 'items' format to 'meals' format
   if(!d.meals&&d.items){
     d.meals=[{id:String(Date.now()),items:d.items,time:'',title:'Meal',source:'migrated'}];
@@ -408,7 +410,7 @@ function getTodayData(){
   return d;
 }
 function saveLogs(){localStorage.setItem(STORE_KEY,JSON.stringify(logs));}
-function updateTodayData(fn){const k=(typeof _viewingDay!=="undefined"&&_viewingDay)||todayKey();logs[k]=fn(logs[k]||{meals:[],steps:null,exercise:[]});saveLogs();renderHome();}
+function updateTodayData(fn){const k=_viewingDay||todayKey();logs[k]=fn(logs[k]||{meals:[],steps:null,exercise:[]});saveLogs();renderHome();}
 function showToast(msg,dur=5000){const t=document.getElementById('toast');t.textContent=msg;t.classList.remove('hidden');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.add('hidden'),dur);}
 function checkKeyThen(fn){if(!apiKey){showToast('Add your OpenAI key in Settings first');switchTab('settings');return;}fn();}
 function timeLabel(){const n=new Date();let h=n.getHours(),m=n.getMinutes(),ap=h>=12?'PM':'AM';h=h%12||12;return`${h}:${m.toString().padStart(2,'0')} ${ap}`;}
@@ -496,7 +498,9 @@ function calcStreak(){let s=0;const t=new Date();for(let i=0;i<365;i++){const d=
 
 // ─── RENDER HOME ──────────────────────────────────────────
 function renderHome(){
-  const data=getViewingData();
+  var vKey=_viewingDay||todayKey();
+  var data=logs[vKey]||{meals:[],steps:null,exercise:[]};
+  if(!data.meals)data.meals=[];
   const foodCals=data.meals.reduce((s,m)=>s+m.items.reduce((ss,i)=>ss+(i.calories||0),0),0);
   const exCals=(data.exercise||[]).reduce((s,e)=>s+(e.calories||0),0);
   const stepCals=estimateStepCalories(data.steps);
@@ -769,8 +773,7 @@ async function saveAddItem(){
 }
 
 // ─── INIT ─────────────────────────────────────────────────
-var _viewingDay = null;
-var _lastRenderedDay = todayKey();
+_lastRenderedDay = todayKey();
 
 document.addEventListener('visibilitychange', function(){
   if(document.visibilityState==='visible'){

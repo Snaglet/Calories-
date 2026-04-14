@@ -157,6 +157,18 @@
   .history-item-cal{color:#000;font-weight:600;}
 
   .hidden{display:none!important;}
+
+  /* SWIPE TO DELETE */
+  .swipe-wrap{position:relative;overflow:hidden;border-radius:18px;margin:0 16px 10px;}
+  .swipe-wrap .swipe-del{position:absolute;right:0;top:0;bottom:0;width:80px;background:#ff3b30;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;cursor:pointer;border-radius:0 18px 18px 0;}
+  .swipe-item{transition:transform 0.2s ease;touch-action:pan-y;}
+  .swipe-item.swiped{transform:translateX(-80px);}
+
+  /* DETAIL ITEM SWIPE */
+  .detail-swipe-wrap{position:relative;overflow:hidden;border-bottom:1px solid #f5f5f5;}
+  .detail-swipe-wrap .detail-del{position:absolute;right:0;top:0;bottom:0;width:70px;background:#ff3b30;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;cursor:pointer;}
+  .detail-swipe-item{transition:transform 0.2s ease;touch-action:pan-y;}
+  .detail-swipe-item.swiped{transform:translateX(-70px);}
 </style>
 </head>
 <body>
@@ -209,16 +221,7 @@
     <div class="modal-btns"><button class="modal-cancel" onclick="closeAddItemModal()">Cancel</button><button class="modal-confirm" onclick="saveAddItem()">Add</button></div>
   </div>
 </div>
-<div class="modal-overlay hidden" id="confirmModal">
-  <div class="modal">
-    <div class="modal-title" id="confirmTitle">Are you sure?</div>
-    <div style="font-size:15px;color:#999;text-align:center;margin-bottom:16px;" id="confirmMsg"></div>
-    <div class="modal-btns">
-      <button class="modal-cancel" onclick="closeConfirm()">Cancel</button>
-      <button style="flex:2;background:#ff3b30;border:none;border-radius:14px;padding:15px;font-size:16px;font-weight:700;color:#fff;cursor:pointer;" id="confirmOkBtn">Delete</button>
-    </div>
-  </div>
-</div>
+
 <div class="modal-overlay hidden" id="editTitleModal">
   <div class="modal">
     <div class="modal-title">Edit Meal Name</div>
@@ -529,12 +532,24 @@ function renderMealLog(data){
       var total=0;
       for(var ii=0;ii<meal.items.length;ii++) total+=(meal.items[ii].calories||0);
       var names=meal.items.slice(0,2).map(function(i){return i.name;}).join(', ')+(meal.items.length>2?'...':'');
+      var displayTitle=(meal.title||names).replace(/```json|```/g,'').trim();
 
+      // Swipe wrapper
+      var wrap=document.createElement('div');
+      wrap.className='swipe-wrap';
+
+      // Delete bg
+      var delBg=document.createElement('div');
+      delBg.className='swipe-del';
+      delBg.textContent='Delete';
+
+      // Card (swipe item)
       var card=document.createElement('div');
-      card.style.cssText='background:#fff;margin:0 16px 10px;border-radius:18px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.07);border:1px solid #efefef;display:flex;align-items:stretch;cursor:pointer;';
+      card.className='swipe-item';
+      card.style.cssText='background:#fff;display:flex;align-items:stretch;border-radius:18px;box-shadow:0 2px 10px rgba(0,0,0,0.07);border:1px solid #efefef;cursor:pointer;';
 
       var thumb=document.createElement('div');
-      thumb.style.cssText='width:80px;min-height:80px;background:#f7f7f7;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:12px;color:#ccc;font-weight:600;';
+      thumb.style.cssText='width:80px;min-height:80px;background:#f7f7f7;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:12px;color:#ccc;font-weight:600;border-radius:18px 0 0 18px;';
       if(meal.imageData){
         var img=document.createElement('img');
         img.src=meal.imageData;
@@ -546,25 +561,22 @@ function renderMealLog(data){
 
       var body=document.createElement('div');
       body.style.cssText='flex:1;padding:11px 14px;min-width:0;';
-      var displayTitle=(meal.title||names).replace(/```json|```/g,'').trim();
       body.innerHTML='<div style="font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+displayTitle+'</div>'
         +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px;">'
         +'<div style="font-size:12px;color:#aaa;">'+meal.items.length+' item'+(meal.items.length!==1?'s':'')+' · '+(meal.time||'')+'</div>'
         +'<div style="font-size:20px;font-weight:800;">'+total.toLocaleString()+'<span style="font-size:12px;font-weight:400;color:#aaa;"> cal</span></div>'
         +'</div>'
-        +'<div style="font-size:11px;color:#007aff;margin-top:4px;font-weight:500;">Tap to view & edit</div>';
-
-      var delBtn=document.createElement('button');
-      delBtn.textContent='Remove';
-      delBtn.style.cssText='background:none;border:none;color:#ff3b30;font-size:12px;font-weight:600;cursor:pointer;padding:0 12px;flex-shrink:0;align-self:center;';
-      delBtn.onclick=function(e){ e.stopPropagation(); deleteMeal(meal.id); };
+        +'<div style="font-size:11px;color:#007aff;margin-top:4px;font-weight:500;">Tap to view & edit · Swipe left to delete</div>';
 
       card.appendChild(thumb);
       card.appendChild(body);
-      card.appendChild(delBtn);
-      card.onclick=function(){ showToast('Opening meal...'); openMealDetail(meal.id); };
+      card.onclick=function(){ openMealDetail(meal.id); };
 
-      c.appendChild(card);
+      wrap.appendChild(delBg);
+      wrap.appendChild(card);
+      c.appendChild(wrap);
+
+      addSwipe(wrap, function(){ deleteMeal(meal.id); });
     })(reversed[mi]);
   }
 }
@@ -616,25 +628,32 @@ function renderDetailScreen(meal){
     ?'<img class="detail-img" src="'+meal.imageData+'" alt="meal">'
     :'';
 
-  // Build items list using DOM - no inline handlers
-  const container=document.getElementById('detailItems');
+  var container=document.getElementById('detailItems');
   container.innerHTML='';
 
   meal.items.forEach(function(item, idx){
-    const row=document.createElement('div');
-    row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid #f5f5f5;';
+    // Swipe wrapper
+    var wrap=document.createElement('div');
+    wrap.className='detail-swipe-wrap';
 
-    // Item name
-    const name=document.createElement('div');
+    // Delete bg
+    var delBg=document.createElement('div');
+    delBg.className='detail-del';
+    delBg.textContent='Delete';
+
+    // Row (swipe item)
+    var row=document.createElement('div');
+    row.className='detail-swipe-item';
+    row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:14px 20px;background:#fff;';
+
+    var name=document.createElement('div');
     name.style.cssText='font-size:15px;font-weight:600;flex:1;';
     name.textContent=item.name;
 
-    // Right side
-    const right=document.createElement('div');
-    right.style.cssText='display:flex;align-items:center;gap:10px;';
+    var right=document.createElement('div');
+    right.style.cssText='display:flex;align-items:center;gap:6px;';
 
-    // Calorie input - tap to edit inline
-    const calInput=document.createElement('input');
+    var calInput=document.createElement('input');
     calInput.type='number';
     calInput.value=item.calories;
     calInput.inputMode='numeric';
@@ -644,30 +663,27 @@ function renderDetailScreen(meal){
       calInput.addEventListener('focus',function(){this.select();});
     })(idx);
 
-    const calLabel=document.createElement('span');
+    var calLabel=document.createElement('span');
     calLabel.textContent='cal';
     calLabel.style.cssText='font-size:13px;color:#ccc;';
 
-    // Delete button
-    const delBtn=document.createElement('button');
-    delBtn.textContent='×';
-    delBtn.style.cssText='background:none;border:none;color:#ccc;font-size:18px;cursor:pointer;line-height:1;padding:0 0 0 6px;font-weight:300;';
-    (function(i){
-      delBtn.addEventListener('click',function(){deleteDetailItem(i);});
-    })(idx);
-
     right.appendChild(calInput);
     right.appendChild(calLabel);
-    right.appendChild(delBtn);
     row.appendChild(name);
     row.appendChild(right);
-    container.appendChild(row);
+
+    wrap.appendChild(delBg);
+    wrap.appendChild(row);
+    container.appendChild(wrap);
+
+    (function(i){
+      addSwipe(wrap, function(){ deleteDetailItem(i); });
+    })(idx);
   });
 
-  // Add Item button
-  const addRow=document.createElement('div');
+  var addRow=document.createElement('div');
   addRow.style.cssText='padding:14px 20px;border-top:1px solid #f5f5f5;';
-  const addBtn=document.createElement('button');
+  var addBtn=document.createElement('button');
   addBtn.textContent='+ Add Item';
   addBtn.style.cssText='background:#f2f2f7;border:none;border-radius:12px;padding:12px 20px;font-size:15px;font-weight:600;color:#007aff;cursor:pointer;width:100%;';
   addBtn.addEventListener('click',function(){addDetailItem();});
@@ -700,15 +716,12 @@ function inlineEditItem(idx, val){
 
 function deleteDetailItem(idx){
   const k=todayKey();
-  const meal=logs[k].meals.find(m=>m.id===currentMealId);
+  const meal=logs[k].meals.find(m=>String(m.id)===String(currentMealId));
   if(!meal)return;
-  const itemName=meal.items[idx]?meal.items[idx].name:'this item';
-  showConfirm('Remove "'+itemName+'"?','This cannot be undone.',function(){
-    meal.items.splice(idx,1);
-    saveLogs();
-    renderDetailScreen(meal);
-    showToast('Item removed');
-  });
+  meal.items.splice(idx,1);
+  saveLogs();
+  renderDetailScreen(meal);
+  showToast('Removed');
 }
 
 function addDetailItem(){
@@ -990,22 +1003,9 @@ function renderHistory(){
 
 // ─── DELETE MEAL ─────────────────────────────────────────
 function deleteMeal(mealId){
-  showConfirm('Remove this meal?','This cannot be undone.',function(){
-    updateTodayData(d=>({...d,meals:(d.meals||[]).filter(m=>m.id!==mealId)}));
-    showToast('Meal removed');
-  });
+  updateTodayData(d=>({...d,meals:(d.meals||[]).filter(m=>m.id!==mealId)}));
+  showToast('Meal removed');
 }
-
-// ─── CONFIRM MODAL ───────────────────────────────────────
-var _confirmCallback=null;
-function showConfirm(title,msg,callback){
-  document.getElementById('confirmTitle').textContent=title;
-  document.getElementById('confirmMsg').textContent=msg;
-  _confirmCallback=callback;
-  document.getElementById('confirmModal').classList.remove('hidden');
-  document.getElementById('confirmOkBtn').onclick=function(){closeConfirm();if(_confirmCallback)_confirmCallback();};
-}
-function closeConfirm(){document.getElementById('confirmModal').classList.add('hidden');_confirmCallback=null;}
 
 // ─── EDIT MEAL TITLE ─────────────────────────────────────
 function openEditTitle(){
@@ -1030,6 +1030,38 @@ function saveEditTitle(){
   showToast('✅ Title updated!');
 }
 document.getElementById('editTitleInput').addEventListener('keydown',function(e){if(e.key==='Enter')saveEditTitle();});
+
+// ─── SWIPE TO DELETE ─────────────────────────────────────
+function addSwipe(el, onDelete){
+  var startX=0, startY=0, dx=0, swiped=false;
+  var inner=el.querySelector('.swipe-item')||el;
+  el.addEventListener('touchstart',function(e){
+    startX=e.touches[0].clientX;
+    startY=e.touches[0].clientY;
+    dx=0;
+  },{passive:true});
+  el.addEventListener('touchmove',function(e){
+    dx=e.touches[0].clientX-startX;
+    var dy=e.touches[0].clientY-startY;
+    if(Math.abs(dy)>Math.abs(dx))return; // vertical scroll
+    if(dx<-10){
+      inner.style.transform='translateX('+Math.max(dx,-80)+'px)';
+      inner.style.transition='none';
+    } else if(dx>10&&swiped){
+      inner.style.transform='translateX('+Math.min(dx-80,0)+'px)';
+      inner.style.transition='none';
+    }
+  },{passive:true});
+  el.addEventListener('touchend',function(){
+    inner.style.transition='transform 0.2s ease';
+    if(dx<-50){inner.style.transform='translateX(-80px)';swiped=true;}
+    else if(dx>30&&swiped){inner.style.transform='translateX(0)';swiped=false;}
+    else if(swiped){inner.style.transform='translateX(-80px)';}
+    else{inner.style.transform='translateX(0)';swiped=false;}
+  });
+  var delBtn=el.querySelector('.swipe-del,.detail-del');
+  if(delBtn)delBtn.addEventListener('click',function(){onDelete();});
+}
 
 // ─── INIT ─────────────────────────────────────────────────
 renderHome();

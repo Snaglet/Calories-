@@ -160,15 +160,13 @@
 
   /* SWIPE TO DELETE */
   .swipe-wrap{position:relative;overflow:hidden;border-radius:18px;margin:0 16px 10px;}
-  .swipe-wrap .swipe-del{position:absolute;right:0;top:0;bottom:0;width:80px;background:#ff3b30;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;cursor:pointer;border-radius:0 18px 18px 0;}
-  .swipe-item{transition:transform 0.2s ease;touch-action:pan-y;}
-  .swipe-item.swiped{transform:translateX(-80px);}
+  .swipe-wrap .swipe-del{position:absolute;right:0;top:0;bottom:0;width:90px;background:#ff3b30;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;border-radius:0 18px 18px 0;opacity:0;transition:opacity 0.1s;}
+  .swipe-item{touch-action:pan-y;will-change:transform;background:#fff;border-radius:18px;}
 
   /* DETAIL ITEM SWIPE */
   .detail-swipe-wrap{position:relative;overflow:hidden;border-bottom:1px solid #f5f5f5;}
-  .detail-swipe-wrap .detail-del{position:absolute;right:0;top:0;bottom:0;width:70px;background:#ff3b30;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;cursor:pointer;}
-  .detail-swipe-item{transition:transform 0.2s ease;touch-action:pan-y;}
-  .detail-swipe-item.swiped{transform:translateX(-70px);}
+  .detail-swipe-wrap .detail-del{position:absolute;right:0;top:0;bottom:0;width:80px;background:#ff3b30;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;opacity:0;transition:opacity 0.1s;}
+  .detail-swipe-item{touch-action:pan-y;will-change:transform;background:#fff;}
 </style>
 </head>
 <body>
@@ -1033,34 +1031,73 @@ document.getElementById('editTitleInput').addEventListener('keydown',function(e)
 
 // ─── SWIPE TO DELETE ─────────────────────────────────────
 function addSwipe(el, onDelete){
-  var startX=0, startY=0, dx=0, swiped=false;
-  var inner=el.querySelector('.swipe-item')||el;
-  el.addEventListener('touchstart',function(e){
+  var inner=el.querySelector('.swipe-item,.detail-swipe-item');
+  var delBg=el.querySelector('.swipe-del,.detail-del');
+  if(!inner)return;
+  var DELETE_THRESHOLD=120; // swipe this far = auto delete
+  var REVEAL_WIDTH=inner.classList.contains('swipe-item')?90:80;
+  var startX=0,startY=0,curX=0,tracking=false,deleted=false;
+
+  inner.addEventListener('touchstart',function(e){
+    if(deleted)return;
     startX=e.touches[0].clientX;
     startY=e.touches[0].clientY;
-    dx=0;
+    curX=0;
+    tracking=true;
+    inner.style.transition='none';
   },{passive:true});
-  el.addEventListener('touchmove',function(e){
-    dx=e.touches[0].clientX-startX;
+
+  inner.addEventListener('touchmove',function(e){
+    if(!tracking||deleted)return;
+    var dx=e.touches[0].clientX-startX;
     var dy=e.touches[0].clientY-startY;
-    if(Math.abs(dy)>Math.abs(dx))return; // vertical scroll
-    if(dx<-10){
-      inner.style.transform='translateX('+Math.max(dx,-80)+'px)';
-      inner.style.transition='none';
-    } else if(dx>10&&swiped){
-      inner.style.transform='translateX('+Math.min(dx-80,0)+'px)';
-      inner.style.transition='none';
+    // If more vertical than horizontal, let page scroll
+    if(Math.abs(dy)>Math.abs(dx)+5)return;
+    curX=Math.min(0,dx); // only allow left swipe
+    inner.style.transform='translateX('+curX+'px)';
+    // Show delete bg proportionally
+    var pct=Math.min(Math.abs(curX)/REVEAL_WIDTH,1);
+    if(delBg){
+      delBg.style.opacity=pct;
+      // Turn brighter red as approaching delete threshold
+      if(Math.abs(curX)>=DELETE_THRESHOLD){
+        delBg.style.background='#c0392b';
+        delBg.textContent='Release to Delete';
+        delBg.style.fontSize='11px';
+      } else {
+        delBg.style.background='#ff3b30';
+        delBg.textContent='Delete';
+        delBg.style.fontSize='13px';
+      }
     }
   },{passive:true});
-  el.addEventListener('touchend',function(){
-    inner.style.transition='transform 0.2s ease';
-    if(dx<-50){inner.style.transform='translateX(-80px)';swiped=true;}
-    else if(dx>30&&swiped){inner.style.transform='translateX(0)';swiped=false;}
-    else if(swiped){inner.style.transform='translateX(-80px)';}
-    else{inner.style.transform='translateX(0)';swiped=false;}
+
+  inner.addEventListener('touchend',function(){
+    if(!tracking||deleted)return;
+    tracking=false;
+    // Auto-delete if swiped far enough
+    if(Math.abs(curX)>=DELETE_THRESHOLD){
+      deleted=true;
+      inner.style.transition='transform 0.25s ease';
+      inner.style.transform='translateX(-120%)';
+      el.style.transition='max-height 0.3s ease, opacity 0.3s ease, margin 0.3s ease';
+      el.style.maxHeight=el.offsetHeight+'px';
+      setTimeout(function(){
+        el.style.maxHeight='0';
+        el.style.opacity='0';
+        el.style.margin='0';
+        el.style.padding='0';
+        el.style.border='none';
+      },50);
+      setTimeout(function(){onDelete();},350);
+    } else {
+      // Snap back
+      inner.style.transition='transform 0.2s ease';
+      inner.style.transform='translateX(0)';
+      if(delBg)delBg.style.opacity='0';
+      curX=0;
+    }
   });
-  var delBtn=el.querySelector('.swipe-del,.detail-del');
-  if(delBtn)delBtn.addEventListener('click',function(){onDelete();});
 }
 
 // ─── INIT ─────────────────────────────────────────────────

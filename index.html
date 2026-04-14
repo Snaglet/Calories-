@@ -209,6 +209,23 @@
     <div class="modal-btns"><button class="modal-cancel" onclick="closeAddItemModal()">Cancel</button><button class="modal-confirm" onclick="saveAddItem()">Add</button></div>
   </div>
 </div>
+<div class="modal-overlay hidden" id="confirmModal">
+  <div class="modal">
+    <div class="modal-title" id="confirmTitle">Are you sure?</div>
+    <div style="font-size:15px;color:#999;text-align:center;margin-bottom:16px;" id="confirmMsg"></div>
+    <div class="modal-btns">
+      <button class="modal-cancel" onclick="closeConfirm()">Cancel</button>
+      <button style="flex:2;background:#ff3b30;border:none;border-radius:14px;padding:15px;font-size:16px;font-weight:700;color:#fff;cursor:pointer;" id="confirmOkBtn">Delete</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay hidden" id="editTitleModal">
+  <div class="modal">
+    <div class="modal-title">Edit Meal Name</div>
+    <input type="text" id="editTitleInput" placeholder="Meal name">
+    <div class="modal-btns"><button class="modal-cancel" onclick="closeEditTitle()">Cancel</button><button class="modal-confirm" onclick="saveEditTitle()">Save</button></div>
+  </div>
+</div>
 
 <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event,'food')">
 <input type="file" id="photoLibraryInput" accept="image/*" style="display:none" onchange="handlePhoto(event,'food')">
@@ -350,7 +367,7 @@
   </div>
   <div id="detailImg"></div>
   <div class="detail-summary">
-    <div class="detail-summary-title" id="detailDesc">Meal</div>
+    <div class="detail-summary-title" id="detailDesc" onclick="openEditTitle()" style="cursor:pointer;" title="Tap to edit">Meal ✎</div>
     <div style="display:flex;align-items:baseline;gap:4px;margin-top:4px;">
       <div class="detail-total" id="detailTotal">0</div>
       <div class="detail-total-label">total calories</div>
@@ -593,6 +610,7 @@ function renderDetailScreen(meal){
   document.getElementById('detailTitle').textContent=meal.time||'Meal';
   var cleanTitle=(meal.title||meal.items.map(i=>i.name).join(', ')).replace(/```json|```/g,'').trim();
   document.getElementById('detailDesc').textContent=cleanTitle;
+  document.getElementById('detailDesc').title='Tap to edit name';
   document.getElementById('detailTotal').textContent=total.toLocaleString();
   document.getElementById('detailImg').innerHTML=meal.imageData
     ?'<img class="detail-img" src="'+meal.imageData+'" alt="meal">'
@@ -684,10 +702,13 @@ function deleteDetailItem(idx){
   const k=todayKey();
   const meal=logs[k].meals.find(m=>m.id===currentMealId);
   if(!meal)return;
-  meal.items.splice(idx,1);
-  saveLogs();
-  renderDetailScreen(meal);
-  showToast('Item removed');
+  const itemName=meal.items[idx]?meal.items[idx].name:'this item';
+  showConfirm('Remove "'+itemName+'"?','This cannot be undone.',function(){
+    meal.items.splice(idx,1);
+    saveLogs();
+    renderDetailScreen(meal);
+    showToast('Item removed');
+  });
 }
 
 function addDetailItem(){
@@ -878,7 +899,8 @@ async function processTextLog(text,source){
     const result=await callGPT([{role:'user',content:`The user logged: "${text}". Break this down into individual ingredients or components and estimate calories for each. For example if someone says "chicken shawarma" list pita, chicken, sauce, veggies etc separately. If they list multiple foods, break each one into its components. Return ONLY a JSON array: [{"name":"ingredient","calories":number,"notes":"portion"}]. Be specific and thorough.`}],400);
     const items=JSON.parse(result.replace(/```json|```/g,'').trim()).map(i=>({...i,id:String(Date.now()+Math.random())}));
     const total=items.reduce((s,i)=>s+(i.calories||0),0);
-    const title=items.length===1?items[0].name:(items.length<=3?items.map(i=>i.name).join(', '):items[0].name+' + '+(items.length-1)+' more');
+    // Use what the user said as the meal title
+    const title=text.charAt(0).toUpperCase()+text.slice(1,60)+(text.length>60?'...':'');
     const meal={id:String(Date.now()),items,time:timeLabel(),title,source};
     updateTodayData(d=>({...d,meals:[...(d.meals||[]),meal]}));
     showToast('✅ '+items.map(i=>i.name+' ('+i.calories+' cal)').join(', '),6000);
@@ -968,9 +990,46 @@ function renderHistory(){
 
 // ─── DELETE MEAL ─────────────────────────────────────────
 function deleteMeal(mealId){
-  updateTodayData(d=>({...d,meals:(d.meals||[]).filter(m=>m.id!==mealId)}));
-  showToast('Meal removed');
+  showConfirm('Remove this meal?','This cannot be undone.',function(){
+    updateTodayData(d=>({...d,meals:(d.meals||[]).filter(m=>m.id!==mealId)}));
+    showToast('Meal removed');
+  });
 }
+
+// ─── CONFIRM MODAL ───────────────────────────────────────
+var _confirmCallback=null;
+function showConfirm(title,msg,callback){
+  document.getElementById('confirmTitle').textContent=title;
+  document.getElementById('confirmMsg').textContent=msg;
+  _confirmCallback=callback;
+  document.getElementById('confirmModal').classList.remove('hidden');
+  document.getElementById('confirmOkBtn').onclick=function(){closeConfirm();if(_confirmCallback)_confirmCallback();};
+}
+function closeConfirm(){document.getElementById('confirmModal').classList.add('hidden');_confirmCallback=null;}
+
+// ─── EDIT MEAL TITLE ─────────────────────────────────────
+function openEditTitle(){
+  const k=todayKey();
+  const meal=logs[k]&&logs[k].meals?logs[k].meals.find(m=>String(m.id)===String(currentMealId)):null;
+  if(!meal)return;
+  document.getElementById('editTitleInput').value=meal.title||'';
+  document.getElementById('editTitleModal').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('editTitleInput').focus(),100);
+}
+function closeEditTitle(){document.getElementById('editTitleModal').classList.add('hidden');}
+function saveEditTitle(){
+  const val=document.getElementById('editTitleInput').value.trim();
+  if(!val)return;
+  const k=todayKey();
+  const meal=logs[k]&&logs[k].meals?logs[k].meals.find(m=>String(m.id)===String(currentMealId)):null;
+  if(!meal)return;
+  meal.title=val;
+  saveLogs();
+  document.getElementById('detailDesc').textContent=val;
+  closeEditTitle();
+  showToast('✅ Title updated!');
+}
+document.getElementById('editTitleInput').addEventListener('keydown',function(e){if(e.key==='Enter')saveEditTitle();});
 
 // ─── INIT ─────────────────────────────────────────────────
 renderHome();

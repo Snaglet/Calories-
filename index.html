@@ -1,1093 +1,605 @@
 <!DOCTYPE html>
-<html lang="en" style="background:#ffffff;">
+<html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Calories">
-<title>Calories</title>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="jAImie"/>
+<meta name="theme-color" content="#0A0A0F"/>
+<title>jAImie's Calorie Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
-  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-  html,body{background:#ffffff!important;min-height:100%;}
-  body{color:#000;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;min-height:100vh;padding-bottom:60px;}
-
-  /* SCREENS */
-  .screen{display:none;min-height:100vh;background:#ffffff;}
-  .screen.active{display:block;}
-
-  /* HEADER */
-  .header{background:#ffffff;padding:54px 20px 12px;border-bottom:1px solid #efefef;}
-  .header-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
-  .app-title{font-size:28px;font-weight:800;}
-  .streak-badge{border:1.5px solid #e0e0e0;border-radius:22px;padding:7px 14px;font-size:14px;font-weight:600;background:#fff;}
-
-  /* WEEK STRIP */
-  .week-strip{display:flex;justify-content:space-between;padding:0 2px;}
-  .day-item{display:flex;flex-direction:column;align-items:center;gap:5px;}
-  .day-label{font-size:11px;color:#aaa;font-weight:500;}
-  .day-circle{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;border:2px solid #e8e8e8;color:#ccc;}
-  .day-circle.today{background:#000;color:#fff;border-color:#000;}
-  .day-circle.over{border-color:#ff3b30;color:#ff3b30;}
-  .day-circle.good{border-color:#34c759;color:#34c759;}
-  .day-circle.warn{border-color:#ff9f0a;color:#ff9f0a;}
-
-  /* MAIN CARD */
-  .main-card{background:#fff;margin:12px 16px 10px;border-radius:18px;padding:14px 16px;box-shadow:0 2px 14px rgba(0,0,0,0.08);border:1px solid #efefef;}
-  .cal-row{display:flex;justify-content:space-between;align-items:center;}
-  .cal-number{font-size:38px;font-weight:800;line-height:1;letter-spacing:-1px;}
-  .cal-denom{font-size:20px;font-weight:400;color:#bbb;margin-left:2px;}
-  .cal-label{font-size:12px;color:#999;margin-top:3px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;}
-  .goal-edit-btn{background:none;border:none;color:#007aff;font-size:13px;cursor:pointer;font-weight:600;padding:0;}
-  .net-note{font-size:11px;color:#bbb;margin-top:2px;}
-  .ring-wrap{position:relative;width:60px;height:60px;flex-shrink:0;}
-  .ring-wrap svg{transform:rotate(-90deg);}
-  .ring-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:11px;font-weight:700;}
-
-  /* LOG BUTTONS */
-  .log-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 16px 12px;}
-  .log-btns-top{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 16px 10px;}
-  .log-btn{border:none;border-radius:18px;padding:18px 8px 16px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;}
-  .log-btn.photo{background:#000;color:#fff;}
-  .log-btn.voice{background:#f2f2f7;color:#000;}
-  .log-btn.voice.rec{background:#ff3b30;color:#fff;}
-  .log-btn.typebtn{background:#f2f2f7;color:#000;}
-  .log-btn.barcode{background:#f2f2f7;color:#000;}
-  .log-btn-label{font-size:15px;font-weight:700;line-height:1;}
-  .log-btn-sub{font-size:11px;font-weight:400;opacity:0.55;line-height:1;}
-  .voice-bars{display:flex;align-items:center;gap:3px;height:20px;margin-bottom:2px;}
-  .voice-bar{width:3px;background:currentColor;border-radius:2px;opacity:0.4;}
-  .voice-bar.b1{height:6px;}.voice-bar.b2{height:12px;}.voice-bar.b3{height:18px;}.voice-bar.b4{height:10px;}.voice-bar.b5{height:6px;}
-  .rec .voice-bar{opacity:1;}
-  .rec .voice-bar.b1{animation:bar 0.8s ease-in-out infinite;}
-  .rec .voice-bar.b2{animation:bar 0.8s ease-in-out infinite 0.1s;}
-  .rec .voice-bar.b3{animation:bar 0.8s ease-in-out infinite 0.2s;}
-  .rec .voice-bar.b4{animation:bar 0.8s ease-in-out infinite 0.3s;}
-  .rec .voice-bar.b5{animation:bar 0.8s ease-in-out infinite 0.4s;}
-  @keyframes bar{0%,100%{transform:scaleY(0.4);}50%{transform:scaleY(1.3);}}
-
-  /* STAT CARDS */
-  .stat-cards{display:flex;gap:10px;margin:0 16px 14px;}
-  .stat-card{flex:1;background:#fff;border-radius:18px;padding:14px 12px;box-shadow:0 2px 10px rgba(0,0,0,0.07);border:1px solid #efefef;cursor:pointer;}
-  .stat-lbl{font-size:10px;color:#aaa;font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.4px;}
-  .stat-val{font-size:18px;font-weight:700;}
-  .stat-act{font-size:11px;color:#007aff;margin-top:5px;font-weight:600;}
-
-  /* MEAL CARDS */
-  .section-title{font-size:20px;font-weight:800;padding:4px 20px 10px;}
-  .meal-card{background:#fff;margin:0 16px 10px;border-radius:18px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.07);border:1px solid #efefef;cursor:pointer;display:flex;align-items:stretch;}
-  .meal-card-thumb{width:80px;min-height:80px;background:#f7f7f7;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:12px;color:#ccc;font-weight:600;text-align:center;padding:4px;}
-  .meal-card-thumb img{width:80px;height:100%;object-fit:cover;}
-  .meal-card-body{flex:1;padding:11px 14px;min-width:0;}
-  .meal-card-title{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .meal-card-meta{display:flex;justify-content:space-between;align-items:center;margin-top:3px;}
-  .meal-card-items{font-size:12px;color:#aaa;}
-  .meal-card-cals{font-size:20px;font-weight:800;flex-shrink:0;}
-  .meal-card-time{font-size:11px;color:#bbb;margin-top:3px;}
-  .meal-card-tap{font-size:11px;color:#007aff;margin-top:4px;font-weight:500;}
-
-  /* EXERCISE ITEMS */
-  .ex-item{background:#fff;margin:0 16px 8px;border-radius:16px;padding:14px 16px;box-shadow:0 2px 8px rgba(0,0,0,0.06);border:1px solid #efefef;display:flex;justify-content:space-between;align-items:center;}
-
-  /* STEPS DISPLAY */
-  .steps-card{background:#fff;margin:0 16px 14px;border-radius:18px;padding:14px 16px;box-shadow:0 2px 10px rgba(0,0,0,0.07);border:1px solid #efefef;display:flex;justify-content:space-between;align-items:center;cursor:pointer;}
-  .steps-info{}
-  .steps-val{font-size:24px;font-weight:800;}
-  .steps-label{font-size:12px;color:#aaa;margin-top:2px;}
-  .steps-cal{font-size:14px;color:#34c759;font-weight:700;margin-top:4px;}
-
-  /* BOTTOM NAV */
-  .bottom-nav{background:#fff;border-top:1px solid #efefef;display:flex;padding:14px 0 28px;margin-top:30px;}
-  .nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;background:none;border:none;}
-  .nav-txt{font-size:11px;font-weight:700;color:#bbb;letter-spacing:0.3px;}
-  .nav-sub{font-size:10px;color:#bbb;}
-  .nav-item.active .nav-txt,.nav-item.active .nav-sub{color:#000;}
-
-  /* MEAL DETAIL SCREEN */
-  .detail-header{background:#fff;padding:56px 20px 14px;border-bottom:1px solid #efefef;display:flex;align-items:center;gap:12px;}
-  .back-btn{background:none;border:none;font-size:16px;color:#007aff;cursor:pointer;font-weight:600;padding:0;}
-  .detail-title{font-size:18px;font-weight:700;flex:1;}
-  .detail-img{width:100%;max-height:240px;object-fit:cover;background:#f7f7f7;}
-  .detail-summary{padding:16px 20px;background:#fff;border-bottom:1px solid #efefef;}
-  .detail-summary-title{font-size:16px;font-weight:600;color:#555;margin-bottom:4px;}
-  .detail-total{font-size:36px;font-weight:800;}
-  .detail-total-label{font-size:14px;color:#aaa;}
-  .detail-items{padding:16px 0;}
-  .detail-item{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid #f5f5f5;}
-  .detail-item-name{font-size:15px;font-weight:600;flex:1;}
-  .detail-item-cal{font-size:15px;font-weight:700;color:#007aff;cursor:pointer;border-bottom:1px dashed #007aff;padding-bottom:1px;}
-  .detail-item-cal-input{font-size:15px;font-weight:700;color:#007aff;border:none;border-bottom:2px solid #007aff;background:transparent;width:70px;text-align:right;outline:none;-webkit-appearance:none;padding:0;}
-  .fix-ai-btn{margin:16px 16px 8px;width:calc(100% - 32px);background:#f2f2f7;border:none;border-radius:18px;padding:16px;font-size:15px;font-weight:700;color:#000;cursor:pointer;}
-  .save-btn{margin:0 16px 24px;width:calc(100% - 32px);background:#000;border:none;border-radius:18px;padding:16px;font-size:15px;font-weight:700;color:#fff;cursor:pointer;}
-
-  /* FIX WITH AI PANEL */
-  .fix-panel{background:#f2f2f7;margin:0 16px;border-radius:16px;padding:16px;margin-bottom:16px;}
-  .fix-panel-title{font-size:14px;font-weight:700;margin-bottom:10px;color:#555;}
-  .fix-input{width:100%;background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:12px;font-size:15px;outline:none;color:#000;margin-bottom:10px;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;}
-  .fix-btns{display:flex;gap:8px;}
-  .fix-voice-btn{flex:1;background:#ff3b30;border:none;border-radius:12px;padding:12px;font-size:14px;font-weight:700;color:#fff;cursor:pointer;}
-  .fix-voice-btn.listening{background:#ff3b30;}
-  .fix-submit-btn{flex:2;background:#007aff;border:none;border-radius:12px;padding:12px;font-size:14px;font-weight:700;color:#fff;cursor:pointer;}
-
-  /* MODALS */
-  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:300;display:flex;align-items:flex-end;}
-  .modal{background:#fff;border-radius:26px 26px 0 0;padding:26px 20px 44px;width:100%;}
-  .modal-title{font-size:18px;font-weight:700;margin-bottom:16px;text-align:center;}
-  .modal input{width:100%;background:#f2f2f7;border:none;border-radius:14px;padding:15px;font-size:16px;margin-bottom:10px;outline:none;-webkit-appearance:none;color:#000;}
-  .modal-btns{display:flex;gap:10px;margin-top:6px;}
-  .modal-cancel{flex:1;background:#f2f2f7;border:none;border-radius:14px;padding:15px;font-size:16px;font-weight:600;color:#aaa;cursor:pointer;}
-  .modal-confirm{flex:2;background:#000;border:none;border-radius:14px;padding:15px;font-size:16px;font-weight:700;color:#fff;cursor:pointer;}
-
-  .setup-card{background:#fff;margin:16px;border-radius:20px;padding:22px;box-shadow:0 2px 14px rgba(0,0,0,0.07);border:1px solid #efefef;}
-  .setup-title{font-size:18px;font-weight:700;margin-bottom:8px;}
-  .setup-desc{font-size:14px;color:#999;line-height:1.6;margin-bottom:16px;}
-  .setup-input{width:100%;background:#f2f2f7;border:none;border-radius:14px;padding:15px;font-size:15px;margin-bottom:12px;outline:none;color:#000;}
-  .setup-save{width:100%;background:#000;border:none;border-radius:14px;padding:15px;font-size:16px;font-weight:700;color:#fff;cursor:pointer;}
-
-  .toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#1c1c1e;color:#fff;padding:12px 24px;border-radius:22px;font-size:14px;z-index:999;pointer-events:none;max-width:90vw;text-align:center;line-height:1.4;}
-  .analyzing-bar{background:#fffcf0;border-radius:14px;padding:13px 16px;margin:0 16px 12px;font-size:14px;color:#b07800;font-weight:600;border:1px solid #ffedb0;}
-
-  .history-day{background:#fff;margin:0 16px 10px;border-radius:18px;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,0.07);border:1px solid #efefef;}
-  .history-day-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;}
-  .history-date{font-size:16px;font-weight:700;}
-  .history-net{font-size:22px;font-weight:800;}
-  .history-meta{font-size:12px;color:#bbb;margin-top:2px;}
-  .history-item-row{display:flex;justify-content:space-between;font-size:13px;color:#aaa;padding:4px 0;border-top:1px solid #f5f5f5;}
-  .history-item-cal{color:#000;font-weight:600;}
-
-  .hidden{display:none!important;}
-
-  /* SWIPE TO DELETE */
-  .swipe-wrap{position:relative;overflow:hidden;border-radius:18px;margin:0 16px 10px;}
-  .swipe-wrap .swipe-del{position:absolute;right:0;top:0;bottom:0;width:90px;background:#ff3b30;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;border-radius:0 18px 18px 0;opacity:0;transition:opacity 0.1s;}
-  .swipe-item{touch-action:pan-y;will-change:transform;background:#fff;border-radius:18px;}
-
-  /* DETAIL ITEM SWIPE */
-  .detail-swipe-wrap{position:relative;overflow:hidden;border-bottom:1px solid #f5f5f5;}
-  .detail-swipe-wrap .detail-del{position:absolute;right:0;top:0;bottom:0;width:80px;background:#ff3b30;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;opacity:0;transition:opacity 0.1s;}
-  .detail-swipe-item{touch-action:pan-y;will-change:transform;background:#fff;}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#0A0A0F;font-family:'Plus Jakarta Sans',sans-serif;overflow:hidden}
+#root{height:100%;overflow:hidden}
+::-webkit-scrollbar{width:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes wave{0%,100%{transform:scaleY(0.25);opacity:0.3}50%{transform:scaleY(1);opacity:1}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes ripple{0%{box-shadow:0 0 0 0 rgba(255,68,68,0.4)}100%{box-shadow:0 0 0 20px rgba(255,68,68,0)}}
+textarea::placeholder{color:rgba(240,240,248,0.28);font-family:'Plus Jakarta Sans',sans-serif;font-size:13px}
+input::placeholder{color:rgba(240,240,248,0.3)}
+button{font-family:'Plus Jakarta Sans',sans-serif}
 </style>
 </head>
 <body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
 
-<div class="toast hidden" id="toast"></div>
-
-<!-- MODALS -->
-<div class="modal-overlay hidden" id="exModal">
-  <div class="modal"><div class="modal-title">Log Exercise</div>
-    <input type="text" id="exNameInput" placeholder="Activity (e.g. OrangeTheory)">
-    <input type="number" id="exCalInput" placeholder="Calories burned" inputmode="numeric">
-    <div class="modal-btns"><button class="modal-cancel" onclick="closeExModal()">Cancel</button><button class="modal-confirm" onclick="saveExercise()">Add</button></div>
-  </div>
-</div>
-<div class="modal-overlay hidden" id="stepsModal">
-  <div class="modal"><div class="modal-title">Log Steps</div>
-    <input type="number" id="stepsInput" placeholder="Number of steps" inputmode="numeric">
-    <div class="modal-btns"><button class="modal-cancel" onclick="closeStepsModal()">Cancel</button><button class="modal-confirm" onclick="saveSteps()">Save</button></div>
-  </div>
-</div>
-<div class="modal-overlay hidden" id="editExModal">
-  <div class="modal"><div class="modal-title">Edit Exercise</div>
-    <input type="text" id="editExName" placeholder="Activity name">
-    <input type="number" id="editExCal" placeholder="Calories burned" inputmode="numeric">
-    <div class="modal-btns"><button class="modal-cancel" onclick="closeEditExercise()">Cancel</button><button class="modal-confirm" onclick="saveEditExercise()">Save</button></div>
-  </div>
-</div>
-<div class="modal-overlay hidden" id="goalModal">
-  <div class="modal"><div class="modal-title">Daily Calorie Goal</div>
-    <input type="number" id="goalInput" placeholder="e.g. 1800" inputmode="numeric">
-    <div class="modal-btns"><button class="modal-cancel" onclick="closeGoalModal()">Cancel</button><button class="modal-confirm" onclick="saveGoal()">Save</button></div>
-  </div>
-</div>
-<div class="modal-overlay hidden" id="typeModal">
-  <div class="modal"><div class="modal-title">What did you eat?</div>
-    <input type="text" id="typeInput" placeholder="e.g. 2 scrambled eggs and toast">
-    <div class="modal-btns"><button class="modal-cancel" onclick="closeTypeModal()">Cancel</button><button class="modal-confirm" onclick="submitTextLog()">Log It</button></div>
-  </div>
-</div>
-<div class="modal-overlay hidden" id="itemEditModal">
-  <div class="modal"><div class="modal-title" id="itemEditTitle">Edit Calories</div>
-    <input type="number" id="itemEditInput" placeholder="Calories" inputmode="numeric">
-    <div class="modal-btns"><button class="modal-cancel" onclick="closeItemEdit()">Cancel</button><button class="modal-confirm" onclick="saveItemEdit()">Save</button></div>
-  </div>
-</div>
-<!-- FIX: added missing id="addItemCal" input -->
-<div class="modal-overlay hidden" id="addItemModal">
-  <div class="modal"><div class="modal-title">Add Item</div>
-    <input type="text" id="addItemName" placeholder="e.g. Side salad, 1 tbsp butter">
-    <input type="number" id="addItemCal" placeholder="Calories (optional — AI will estimate)" inputmode="numeric">
-    <div class="modal-btns"><button class="modal-cancel" onclick="closeAddItemModal()">Cancel</button><button class="modal-confirm" onclick="saveAddItem()">Add</button></div>
-  </div>
-</div>
-<div class="modal-overlay hidden" id="editTitleModal">
-  <div class="modal">
-    <div class="modal-title">Edit Meal Name</div>
-    <input type="text" id="editTitleInput" placeholder="Meal name">
-    <div class="modal-btns"><button class="modal-cancel" onclick="closeEditTitle()">Cancel</button><button class="modal-confirm" onclick="saveEditTitle()">Save</button></div>
-  </div>
-</div>
-
-<input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event,'food')">
-<input type="file" id="photoLibraryInput" accept="image/*" style="display:none" onchange="handlePhoto(event,'food')">
-
-<!-- ═══════════════ HOME SCREEN ═══════════════ -->
-<div class="screen active" id="homeScreen">
-  <div class="header">
-    <div class="header-top">
-      <div class="app-title">Calories</div>
-      <div class="streak-badge">🔥 <span id="streakCount">0</span> day streak</div>
-    </div>
-    <div class="week-strip" id="weekStrip"></div>
-    <div id="dayBanner" style="display:none;background:#007aff;color:#fff;text-align:center;padding:6px 16px;font-size:13px;font-weight:600;border-radius:10px;margin-top:10px;"></div>
-  </div>
-
-  <div class="main-card">
-    <div class="cal-row">
-      <div>
-        <div style="display:flex;align-items:baseline;gap:2px;">
-          <span class="cal-number" id="mainCalNumber">0</span>
-          <span class="cal-denom">/<span id="goalNum">1800</span></span>
-        </div>
-        <div class="cal-label">Calories eaten &nbsp;<button class="goal-edit-btn" onclick="openGoalModal()">Edit goal</button></div>
-        <div class="net-note" id="netLabel"></div>
-      </div>
-      <div class="ring-wrap">
-        <svg width="60" height="60" viewBox="0 0 60 60">
-          <circle cx="30" cy="30" r="24" fill="none" stroke="#efefef" stroke-width="6"/>
-          <circle cx="30" cy="30" r="24" fill="none" stroke="#000" stroke-width="6" stroke-dasharray="150.8" id="progressRing" stroke-dashoffset="150.8" stroke-linecap="round"/>
-        </svg>
-        <div class="ring-center" id="ringPct">0%</div>
-      </div>
-    </div>
-  </div>
-
-  <div id="logBtnsSection"><div class="log-btns-top">
-    <button class="log-btn photo" onclick="checkKeyThen(()=>document.getElementById('photoInput').click())">
-      <div class="log-btn-label">Snap</div>
-      <div class="log-btn-sub">Take a photo</div>
-    </button>
-    <button class="log-btn photo" onclick="checkKeyThen(()=>document.getElementById('photoLibraryInput').click())">
-      <div class="log-btn-label">Upload</div>
-      <div class="log-btn-sub">From library</div>
-    </button>
-  </div>
-  <div class="log-btns">
-    <button class="log-btn voice" id="voiceBtn" onclick="startVoice()">
-      <div class="voice-bars">
-        <div class="voice-bar b1"></div><div class="voice-bar b2"></div><div class="voice-bar b3"></div><div class="voice-bar b4"></div><div class="voice-bar b5"></div>
-      </div>
-      <div class="log-btn-label" id="micLabel">Voice</div>
-      <div class="log-btn-sub" id="micSub">Say what you ate</div>
-    </button>
-    <button class="log-btn typebtn" onclick="document.getElementById('typeModal').classList.remove('hidden');setTimeout(()=>document.getElementById('typeInput').focus(),100)">
-      <div class="log-btn-label">Type</div>
-      <div class="log-btn-sub">Write it out</div>
-    </button>
-  </div>
-  </div><!-- end logBtnsSection -->
-
-  <div class="stat-cards">
-    <div class="stat-card" onclick="openExModal()">
-      <div class="stat-lbl">Exercise</div>
-      <div class="stat-val" id="exTotal">0 cal</div>
-      <div class="stat-act">+ Add</div>
-    </div>
-    <div class="stat-card" onclick="requestHealthSteps()">
-      <div class="stat-lbl">Steps</div>
-      <div class="stat-val" id="stepsVal">—</div>
-      <div class="stat-act" id="stepsAct">Tap to sync</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-lbl">Net Cal</div>
-      <div class="stat-val" id="netTotal">0</div>
-      <div class="stat-act" style="color:#bbb">eaten−burned</div>
-    </div>
-  </div>
-
-  <div class="analyzing-bar hidden" id="analyzingBar">Analyzing your food...</div>
-
-  <div id="mealSectionTitle"></div>
-  <div id="mealLog"></div>
-  <div id="exLog"></div>
-
-  <div class="bottom-nav">
-    <button class="nav-item active" id="navToday" onclick="switchTab('today')"><div class="nav-txt">TODAY</div><div class="nav-sub">Today</div></button>
-    <button class="nav-item" id="navHistory" onclick="switchTab('history')"><div class="nav-txt">HISTORY</div><div class="nav-sub">History</div></button>
-    <button class="nav-item" id="navSettings" onclick="switchTab('settings')"><div class="nav-txt">SETTINGS</div><div class="nav-sub">Settings</div></button>
-  </div>
-</div>
-
-<!-- ═══════════════ HISTORY SCREEN ═══════════════ -->
-<div class="screen" id="historyScreen">
-  <div class="header" style="padding-top:56px;">
-    <div class="header-top"><div class="app-title">History</div></div>
-  </div>
-  <div id="historyList"></div>
-  <div class="bottom-nav">
-    <button class="nav-item" id="navToday2" onclick="switchTab('today')"><div class="nav-txt">TODAY</div><div class="nav-sub">Today</div></button>
-    <button class="nav-item active" id="navHistory2" onclick="switchTab('history')"><div class="nav-txt">HISTORY</div><div class="nav-sub">History</div></button>
-    <button class="nav-item" id="navSettings2" onclick="switchTab('settings')"><div class="nav-txt">SETTINGS</div><div class="nav-sub">Settings</div></button>
-  </div>
-</div>
-
-<!-- ═══════════════ SETTINGS SCREEN ═══════════════ -->
-<div class="screen" id="settingsScreen">
-  <div class="header" style="padding-top:56px;">
-    <div class="header-top"><div class="app-title">Settings</div></div>
-  </div>
-  <div class="setup-card" style="margin-top:16px">
-    <div class="setup-title">OpenAI API Key</div>
-    <div class="setup-desc">Paste your key from <strong>platform.openai.com</strong>. Photos are compressed before sending — each costs about $0.001.</div>
-    <input type="password" class="setup-input" id="apiKeyInput" placeholder="sk-...">
-    <button class="setup-save" onclick="saveApiKey()">Save Key</button>
-  </div>
-  <div class="setup-card" style="margin-top:12px">
-    <div class="setup-title">Daily Calorie Goal</div>
-    <div class="setup-desc">Your base goal before exercise.</div>
-    <input type="number" class="setup-input" id="goalSettingInput" placeholder="e.g. 1800" inputmode="numeric">
-    <button class="setup-save" onclick="saveGoalFromSettings()">Save Goal</button>
-  </div>
-  <div class="bottom-nav">
-    <button class="nav-item" onclick="switchTab('today')"><div class="nav-txt">TODAY</div><div class="nav-sub">Today</div></button>
-    <button class="nav-item" onclick="switchTab('history')"><div class="nav-txt">HISTORY</div><div class="nav-sub">History</div></button>
-    <button class="nav-item active"><div class="nav-txt">SETTINGS</div><div class="nav-sub">Settings</div></button>
-  </div>
-</div>
-
-<!-- ═══════════════ MEAL DETAIL SCREEN ═══════════════ -->
-<div class="screen" id="detailScreen">
-  <div class="detail-header">
-    <button class="back-btn" onclick="goBack()">← Back</button>
-    <div class="detail-title" id="detailTitle">Meal</div>
-  </div>
-  <div id="detailImg"></div>
-  <div class="detail-summary">
-    <div class="detail-summary-title" id="detailDesc" onclick="openEditTitle()" style="cursor:pointer;" title="Tap to edit">Meal ✎</div>
-    <div style="display:flex;align-items:baseline;gap:4px;margin-top:4px;">
-      <div class="detail-total" id="detailTotal">0</div>
-      <div class="detail-total-label">total calories</div>
-    </div>
-  </div>
-  <div class="analyzing-bar hidden" id="analyzingBarDetail">Updating meal...</div>
-  <div class="detail-items" id="detailItems"></div>
-
-  <button class="fix-ai-btn" id="fixAiBtn" onclick="startFixVoice()">Fix with AI</button>
-  <div id="fixInput" style="display:none"></div>
-
-  <button class="save-btn" onclick="goBack()">Save</button>
-</div>
-
-<script>
-const STORE_KEY='cal-v13',API_STORE='cal-oai-key',LAST_EX_KEY='cal-last-ex',BARCODE_KEY='cal-barcodes';
-let apiKey=localStorage.getItem(API_STORE)||'';
-var _viewingDay=null;
-var _lastRenderedDay=null;
-let goal=parseInt(localStorage.getItem('cal-goal')||'1800');
-let logs={};try{logs=JSON.parse(localStorage.getItem(STORE_KEY)||'{}');}catch{}
-let barcodeMemory={};try{barcodeMemory=JSON.parse(localStorage.getItem(BARCODE_KEY)||'{}');}catch{}
-let currentMealId=null,editingItemIdx=null,isRecording=false,isFixRecording=false,recognition=null,fixRecognition=null;
-let _editingExId=null;
-
-// ─── HELPERS ──────────────────────────────────────────────
-function todayKey(){return new Date().toISOString().split('T')[0];}
-function getTodayData(){
-  const d=logs[_viewingDay||todayKey()]||{meals:[],steps:null,exercise:[]};
-  if(!d.meals&&d.items){
-    d.meals=[{id:String(Date.now()),items:d.items,time:'',title:'Meal',source:'migrated'}];
-    delete d.items;
-    logs[todayKey()]=d;
-    saveLogs();
-  }
-  if(!d.meals)d.meals=[];
-  return d;
-}
-function saveLogs(){localStorage.setItem(STORE_KEY,JSON.stringify(logs));}
-function updateTodayData(fn){const k=_viewingDay||todayKey();logs[k]=fn(logs[k]||{meals:[],steps:null,exercise:[]});saveLogs();renderHome();}
-function showToast(msg,dur=5000){const t=document.getElementById('toast');t.textContent=msg;t.classList.remove('hidden');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.add('hidden'),dur);}
-function checkKeyThen(fn){if(!apiKey){showToast('Add your OpenAI key in Settings first');switchTab('settings');return;}fn();}
-function requireKey(){if(!apiKey){showToast('Add your OpenAI key in Settings first');switchTab('settings');return false;}return true;}
-function timeLabel(){const n=new Date();let h=n.getHours(),m=n.getMinutes(),ap=h>=12?'PM':'AM';h=h%12||12;return`${h}:${m.toString().padStart(2,'0')} ${ap}`;}
-function saveBarcodes(){localStorage.setItem(BARCODE_KEY,JSON.stringify(barcodeMemory));}
-
-// ─── TABS / SCREENS ───────────────────────────────────────
-function showScreen(id){
-  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-  window.scrollTo(0,0);
-}
-function switchTab(tab){
-  if(tab==='today'){showScreen('homeScreen');renderHome();}
-  else if(tab==='history'){showScreen('historyScreen');renderHistory();}
-  else if(tab==='settings'){showScreen('settingsScreen');document.getElementById('apiKeyInput').value=apiKey;document.getElementById('goalSettingInput').value=goal;}
-}
-function goBack(){showScreen('homeScreen');renderHome();}
-
-// ─── API KEY / GOAL ───────────────────────────────────────
-function saveApiKey(){apiKey=document.getElementById('apiKeyInput').value.trim();localStorage.setItem(API_STORE,apiKey);showToast('✅ API key saved!');switchTab('today');}
-function openGoalModal(){document.getElementById('goalInput').value=goal;document.getElementById('goalModal').classList.remove('hidden');}
-function closeGoalModal(){document.getElementById('goalModal').classList.add('hidden');}
-function saveGoal(){const v=parseInt(document.getElementById('goalInput').value);if(!isNaN(v)&&v>0){goal=v;localStorage.setItem('cal-goal',v);renderHome();}closeGoalModal();}
-function saveGoalFromSettings(){const v=parseInt(document.getElementById('goalSettingInput').value);if(!isNaN(v)&&v>0){goal=v;localStorage.setItem('cal-goal',v);showToast('✅ Goal saved!');}}
-
-// ─── APPLE HEALTH STEPS ───────────────────────────────────
-function requestHealthSteps(){
-  if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.getSteps){
-    window.webkit.messageHandlers.getSteps.postMessage({});
-    showToast('Requesting steps from Health app...',3000);
-  } else {
-    openStepsModal();
-  }
-}
-window.receiveSteps=function(steps){
-  updateTodayData(d=>({...d,steps:parseInt(steps)||0}));
-  showToast(`✅ Steps synced: ${parseInt(steps).toLocaleString()}`,4000);
+// ─── Storage ──────────────────────────────────────────────────────────────────
+const ls = {
+  get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k,v) => { try { localStorage.setItem(k,v); } catch {} }
 };
-function estimateStepCalories(steps){return Math.round((steps||0)*0.04);}
+const loadMeals = d => { try { return JSON.parse(ls.get(`jct:m:${d}`) || "[]"); } catch { return []; } };
+const saveMeals = (d,m) => ls.set(`jct:m:${d}`, JSON.stringify(m));
+const loadGoal = () => parseInt(ls.get("jct:goal") || "1600");
+const saveGoal = g => ls.set("jct:goal", String(g));
+const loadKey = () => ls.get("jct:apikey") || "";
+const saveKey = k => ls.set("jct:apikey", k);
+const loadWeights = () => { try { return JSON.parse(ls.get("jct:weights") || "[]"); } catch { return []; } };
+const saveWeights = w => ls.set("jct:weights", JSON.stringify(w));
 
-// ─── FIX: openStepsModal / closeStepsModal / saveSteps ────
-function openStepsModal(){
-  const d=getTodayData();
-  document.getElementById('stepsInput').value=d.steps||'';
-  document.getElementById('stepsModal').classList.remove('hidden');
-  setTimeout(()=>document.getElementById('stepsInput').focus(),100);
-}
-function closeStepsModal(){document.getElementById('stepsModal').classList.add('hidden');}
-function saveSteps(){
-  const v=parseInt(document.getElementById('stepsInput').value);
-  if(!isNaN(v)&&v>=0){updateTodayData(d=>({...d,steps:v}));showToast('✅ Steps saved!');}
-  closeStepsModal();
-}
+// ─── Date ─────────────────────────────────────────────────────────────────────
+const fmtKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const fmtDisplay = d => d.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"});
+const isToday = d => fmtKey(d) === fmtKey(new Date());
 
-// ─── WEEK STRIP ───────────────────────────────────────────
-function renderWeekStrip(){
-  const strip=document.getElementById('weekStrip'),today=new Date(),days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const sow=new Date(today);sow.setDate(today.getDate()-today.getDay()+1);
-  strip.innerHTML='';
-  for(let i=0;i<7;i++){
-    const d=new Date(sow);d.setDate(sow.getDate()+i);
-    const key=d.toISOString().split('T')[0],isToday=key===todayKey(),dl=logs[key];
-    let cls='day-circle';
-    if(isToday)cls+=' today';
-    else if(dl&&dl.meals&&dl.meals.length){
-      const f=dl.meals.reduce((s,m)=>s+m.items.reduce((ss,i)=>ss+(i.calories||0),0),0);
-      const e=(dl.exercise||[]).reduce((s,e)=>s+(e.calories||0),0);
-      const n=f-e,g=parseInt(localStorage.getItem('cal-goal')||'1800');
-      cls+=n>g?' over':n>g*.85?' warn':' good';
-    }
-    (function(dayKey, isToday){
-      var dayDiv=document.createElement('div');
-      dayDiv.className='day-item';
-      dayDiv.style.cursor='pointer';
-      dayDiv.innerHTML='<div class="day-label">'+days[d.getDay()]+'</div><div class="'+cls+'">'+d.getDate()+'</div>';
-      dayDiv.addEventListener('click', function(){
-        if(isToday){
-          _viewingDay=null;
-          document.getElementById('dayBanner').style.display='none';
-        } else {
-          _viewingDay=dayKey;
-          document.getElementById('dayBanner').textContent=new Date(dayKey+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'});
-          document.getElementById('dayBanner').style.display='block';
-        }
-        renderHome();
-      });
-      strip.appendChild(dayDiv);
-    })(key, isToday);
-  }
-}
-function calcStreak(){let s=0;const t=new Date();for(let i=0;i<365;i++){const d=new Date(t);d.setDate(t.getDate()-i);const k=d.toISOString().split('T')[0];if(logs[k]&&logs[k].meals&&logs[k].meals.length>0)s++;else if(i>0)break;}return s;}
-
-// ─── RENDER HOME ──────────────────────────────────────────
-function renderHome(){
-  var vKey=_viewingDay||todayKey();
-  var data=logs[vKey]||{meals:[],steps:null,exercise:[]};
-  if(!data.meals)data.meals=[];
-  const foodCals=data.meals.reduce((s,m)=>s+m.items.reduce((ss,i)=>ss+(i.calories||0),0),0);
-  const exCals=(data.exercise||[]).reduce((s,e)=>s+(e.calories||0),0);
-  const stepCals=estimateStepCalories(data.steps);
-  const totalBurned=exCals+stepCals;
-  const effectiveGoal=goal+totalBurned;
-  const net=foodCals-totalBurned;
-  const pct=Math.min(foodCals/effectiveGoal,1);
-
-  document.getElementById('mainCalNumber').textContent=foodCals.toLocaleString();
-  document.getElementById('goalNum').textContent=effectiveGoal.toLocaleString();
-  document.getElementById('netTotal').textContent=net.toLocaleString();
-  document.getElementById('exTotal').textContent=`${exCals} cal`;
-  document.getElementById('ringPct').textContent=Math.round(pct*100)+'%';
-  document.getElementById('progressRing').setAttribute('stroke-dashoffset',150.8-pct*150.8);
-  document.getElementById('progressRing').setAttribute('stroke',foodCals>effectiveGoal?'#ff3b30':'#000');
-  document.getElementById('streakCount').textContent=calcStreak();
-
-  if(data.steps){
-    document.getElementById('stepsVal').textContent=data.steps.toLocaleString();
-    document.getElementById('stepsAct').textContent=`~${stepCals} cal burned`;
-    document.getElementById('stepsAct').style.color='#34c759';
-  } else {
-    document.getElementById('stepsVal').textContent='—';
-    document.getElementById('stepsAct').textContent='Tap to sync';
-    document.getElementById('stepsAct').style.color='#007aff';
-  }
-
-  let netParts=[];
-  if(exCals>0)netParts.push(`${exCals} ex`);
-  if(stepCals>0&&data.steps)netParts.push(`${stepCals} steps`);
-  document.getElementById('netLabel').textContent=netParts.length>0?`Base ${goal.toLocaleString()} + ${netParts.join(' + ')} = ${effectiveGoal.toLocaleString()} goal`:'';
-
-  renderWeekStrip();
-  renderMealLog(data);
-  renderExLog(data);
+// ─── OpenAI helpers ───────────────────────────────────────────────────────────
+async function analyze(apiKey, imageBase64, description) {
+  const content = [];
+  if (imageBase64) content.push({type:"image_url",image_url:{url:`data:image/jpeg;base64,${imageBase64}`,detail:"high"}});
+  const prompt = imageBase64
+    ? `Analyze this meal photo${description?` and this description: "${description}"`:""}. Return ONLY valid JSON, no markdown:\n{"mealTitle":"...","totalCalories":0,"ingredients":[{"name":"...","calories":0}],"summary":"..."}`
+    : `User described: "${description}". Estimate calories. Return ONLY valid JSON, no markdown:\n{"mealTitle":"...","totalCalories":0,"ingredients":[{"name":"...","calories":0}],"summary":"..."}`;
+  content.push({type:"text",text:prompt});
+  const res = await fetch("https://api.openai.com/v1/chat/completions",{
+    method:"POST",
+    headers:{"Content-Type":"application/json","Authorization":`Bearer ${apiKey}`},
+    body:JSON.stringify({model:"gpt-4o",messages:[{role:"user",content}],max_tokens:600,temperature:0.3})
+  });
+  if(!res.ok){const e=await res.json();throw new Error(e.error?.message||"OpenAI error");}
+  const data = await res.json();
+  return JSON.parse(data.choices[0].message.content.trim().replace(/```json|```/g,"").trim());
 }
 
-function renderMealLog(data){
-  var c=document.getElementById('mealLog');
-  var t=document.getElementById('mealSectionTitle');
-  if(!data.meals||!data.meals.length){c.innerHTML='';t.innerHTML='';return;}
-  t.innerHTML='<div class="section-title">Meals Today</div>';
-  c.innerHTML='';
-  var reversed=[...data.meals].reverse();
-  for(var mi=0;mi<reversed.length;mi++){
-    (function(meal){
-      var total=0;
-      for(var ii=0;ii<meal.items.length;ii++) total+=(meal.items[ii].calories||0);
-      var names=meal.items.slice(0,2).map(function(i){return i.name;}).join(', ')+(meal.items.length>2?'...':'');
-      var displayTitle=(meal.title||names).replace(/```json|```/g,'').trim();
+async function transcribeAudio(apiKey, blob) {
+  // iOS Safari uses audio/mp4, try to use that if available
+  const mimeType = blob.type || "audio/webm";
+  const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("ogg") ? "ogg" : "webm";
+  const fd = new FormData();
+  fd.append("file", blob, `audio.${ext}`);
+  fd.append("model","whisper-1");
+  fd.append("language","en");
+  const res = await fetch("https://api.openai.com/v1/audio/transcriptions",{
+    method:"POST",
+    headers:{"Authorization":`Bearer ${apiKey}`},
+    body:fd
+  });
+  if(!res.ok){const e=await res.json();throw new Error(e.error?.message||"Whisper error");}
+  const data = await res.json();
+  return data.text || "";
+}
 
-      var wrap=document.createElement('div');
-      wrap.className='swipe-wrap';
+let _id = Date.now();
+const uid = () => `m${++_id}`;
+const EMOJIS = ["🍝","🥗","🍜","🥩","🍱","🥘","🍛","🥙","🌮","🫕"];
 
-      var delBg=document.createElement('div');
-      delBg.className='swipe-del';
-      delBg.textContent='Delete';
+// ─── Colors ───────────────────────────────────────────────────────────────────
+const C = {
+  bg:"#0A0A0F", surface:"#13131A", hover:"#1C1C28", card:"#16161F",
+  border:"rgba(255,255,255,0.06)",
+  accent:"#4AE68A", aDim:"rgba(74,230,138,0.12)", aMid:"rgba(74,230,138,0.35)",
+  text:"#F0F0F8", sub:"rgba(240,240,248,0.5)", dim:"rgba(240,240,248,0.22)",
+  red:"#FF4444", rDim:"rgba(255,68,68,0.14)", rMid:"rgba(255,68,68,0.35)"
+};
 
-      var card=document.createElement('div');
-      card.className='swipe-item';
-      card.style.cssText='background:#fff;display:flex;align-items:stretch;border-radius:18px;box-shadow:0 2px 10px rgba(0,0,0,0.07);border:1px solid #efefef;cursor:pointer;';
+// ─── SVG Icons ────────────────────────────────────────────────────────────────
+const IcCamera = () => <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>;
+const IcMic = ({size=25}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>;
+const IcStop = ({size=20}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>;
+const IcLeft = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>;
+const IcRight = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>;
+const IcEdit = ({size=13}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
+const IcBack = () => <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>;
+const IcTrash = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>;
 
-      var thumb=document.createElement('div');
-      thumb.style.cssText='width:80px;min-height:80px;background:#f7f7f7;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:12px;color:#ccc;font-weight:600;border-radius:18px 0 0 18px;';
-      if(meal.imageData){
-        var img=document.createElement('img');
-        img.src=meal.imageData;
-        img.style.cssText='width:80px;height:100%;object-fit:cover;';
-        thumb.appendChild(img);
-      } else {
-        thumb.textContent='No photo';
+// ─── Shared components ────────────────────────────────────────────────────────
+function Spinner({text}) {
+  return <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",gap:20,background:C.bg}}>
+    <div style={{width:44,height:44,border:`3px solid ${C.border}`,borderTop:`3px solid ${C.accent}`,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+    <p style={{fontSize:16,fontWeight:700,color:C.text}}>{text}</p>
+  </div>;
+}
+
+function VoiceVisualizer({active}) {
+  const canvasRef = useRef(null);
+  const rafRef = useRef(null);
+  const streamRef = useRef(null);
+  const BARS = 24;
+
+  useEffect(() => {
+    const canvas = canvasRef.current; if(!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const drawFlat = () => {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      const bw = canvas.width/BARS;
+      ctx.fillStyle = "rgba(74,230,138,0.18)";
+      for(let i=0;i<BARS;i++){
+        const h=4; ctx.beginPath();
+        ctx.roundRect(i*bw+1,(canvas.height-h)/2,bw-2,h,2); ctx.fill();
       }
-
-      var body=document.createElement('div');
-      body.style.cssText='flex:1;padding:11px 14px;min-width:0;';
-      body.innerHTML='<div style="font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+displayTitle+'</div>'
-        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px;">'
-        +'<div style="font-size:12px;color:#aaa;">'+meal.items.length+' item'+(meal.items.length!==1?'s':'')+' · '+(meal.time||'')+'</div>'
-        +'<div style="font-size:20px;font-weight:800;">'+total.toLocaleString()+'<span style="font-size:12px;font-weight:400;color:#aaa;"> cal</span></div>'
-        +'</div>'
-        +'<div style="font-size:11px;color:#007aff;margin-top:4px;font-weight:500;">Tap to view & edit · Swipe left to delete</div>';
-
-      card.appendChild(thumb);
-      card.appendChild(body);
-      card.onclick=function(){ openMealDetail(meal.id); };
-
-      wrap.appendChild(delBg);
-      wrap.appendChild(card);
-      c.appendChild(wrap);
-
-      addSwipe(wrap, function(){ deleteMeal(meal.id); });
-    })(reversed[mi]);
-  }
-}
-
-function renderExLog(data){
-  const c=document.getElementById('exLog');
-  if(!data.exercise||!data.exercise.length){c.innerHTML='';return;}
-  c.innerHTML='<div class="section-title">Exercise</div>'+[...data.exercise].reverse().map(ex=>`
-    <div class="ex-item">
-      <div style="font-size:15px;font-weight:600">${ex.label}</div>
-      <div style="display:flex;align-items:center;gap:10px">
-        <button onclick="openEditExercise('${ex.id}','${ex.label.replace(/'/g,'')}',${ex.calories})" style="font-size:15px;color:#34c759;font-weight:700;background:none;border:none;cursor:pointer;border-bottom:1px dashed #34c759;padding:0">+${ex.calories} cal</button>
-        <button onclick="deleteExercise('${ex.id}')" style="background:none;border:none;color:#ff3b30;font-size:22px;cursor:pointer;line-height:1">×</button>
-      </div>
-    </div>`).join('');
-}
-
-// ─── EXERCISE MODAL ───────────────────────────────────────
-function openExModal(){
-  document.getElementById('exNameInput').value='';
-  document.getElementById('exCalInput').value='';
-  document.getElementById('exModal').classList.remove('hidden');
-  setTimeout(()=>document.getElementById('exNameInput').focus(),100);
-}
-function closeExModal(){document.getElementById('exModal').classList.add('hidden');}
-function saveExercise(){
-  const label=document.getElementById('exNameInput').value.trim();
-  const cal=parseInt(document.getElementById('exCalInput').value);
-  if(!label){showToast('Enter an activity name');return;}
-  if(isNaN(cal)||cal<=0){showToast('Enter calories burned');return;}
-  updateTodayData(d=>({...d,exercise:[...(d.exercise||[]),{id:String(Date.now()),label,calories:cal}]}));
-  showToast('✅ Exercise logged!');
-  closeExModal();
-}
-function deleteExercise(id){updateTodayData(d=>({...d,exercise:(d.exercise||[]).filter(e=>e.id!==id)}));}
-function openEditExercise(id,label,cal){
-  _editingExId=id;
-  document.getElementById('editExName').value=label;
-  document.getElementById('editExCal').value=cal;
-  document.getElementById('editExModal').classList.remove('hidden');
-}
-function closeEditExercise(){document.getElementById('editExModal').classList.add('hidden');_editingExId=null;}
-function saveEditExercise(){
-  const label=document.getElementById('editExName').value.trim();
-  const cal=parseInt(document.getElementById('editExCal').value);
-  if(!label||isNaN(cal))return;
-  updateTodayData(d=>({...d,exercise:(d.exercise||[]).map(e=>e.id===_editingExId?{...e,label,calories:cal}:e)}));
-  closeEditExercise();
-  showToast('✅ Updated!');
-}
-
-// ─── MEAL DETAIL ──────────────────────────────────────────
-function openMealDetail(mealId){
-  currentMealId=String(mealId);
-  var foundMeal=null;
-  Object.keys(logs).forEach(function(day){
-    if(logs[day].meals){
-      logs[day].meals.forEach(function(m){
-        if(String(m.id)===String(mealId)){foundMeal=m;}
-      });
-    }
-  });
-  if(!foundMeal){showToast('Meal not found');return;}
-  renderDetailScreen(foundMeal);
-  showScreen('detailScreen');
-}
-
-function renderDetailScreen(meal){
-  const total=meal.items.reduce((s,i)=>s+(i.calories||0),0);
-  document.getElementById('detailTitle').textContent=meal.time||'Meal';
-  var cleanTitle=(meal.title||meal.items.map(i=>i.name).join(', ')).replace(/```json|```/g,'').trim();
-  document.getElementById('detailDesc').textContent=cleanTitle+' ✎';
-  document.getElementById('detailTotal').textContent=total.toLocaleString();
-  document.getElementById('detailImg').innerHTML=meal.imageData
-    ?'<img class="detail-img" src="'+meal.imageData+'" alt="meal">'
-    :'';
-
-  var container=document.getElementById('detailItems');
-  container.innerHTML='';
-
-  meal.items.forEach(function(item, idx){
-    var wrap=document.createElement('div');
-    wrap.className='detail-swipe-wrap';
-
-    var delBg=document.createElement('div');
-    delBg.className='detail-del';
-    delBg.textContent='Delete';
-
-    var row=document.createElement('div');
-    row.className='detail-swipe-item';
-    row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:14px 20px;background:#fff;';
-
-    var name=document.createElement('div');
-    name.style.cssText='font-size:15px;font-weight:600;flex:1;';
-    name.textContent=item.name;
-
-    var right=document.createElement('div');
-    right.style.cssText='display:flex;align-items:center;gap:6px;';
-
-    var calInput=document.createElement('input');
-    calInput.type='number';
-    calInput.value=item.calories;
-    calInput.inputMode='numeric';
-    calInput.style.cssText='font-size:15px;font-weight:600;color:#555;border:none;background:transparent;width:55px;text-align:right;outline:none;padding:0;-webkit-appearance:none;';
-    (function(i){
-      calInput.addEventListener('change',function(){inlineEditItem(i,this.value);});
-      calInput.addEventListener('focus',function(){this.select();});
-    })(idx);
-
-    var calLabel=document.createElement('span');
-    calLabel.textContent='cal';
-    calLabel.style.cssText='font-size:13px;color:#ccc;';
-
-    right.appendChild(calInput);
-    right.appendChild(calLabel);
-    row.appendChild(name);
-    row.appendChild(right);
-
-    wrap.appendChild(delBg);
-    wrap.appendChild(row);
-    container.appendChild(wrap);
-
-    (function(i){
-      addSwipe(wrap, function(){ deleteDetailItem(i); });
-    })(idx);
-  });
-
-  var addRow=document.createElement('div');
-  addRow.style.cssText='padding:14px 20px;border-top:1px solid #f5f5f5;';
-  var addBtn=document.createElement('button');
-  addBtn.textContent='+ Add Item';
-  addBtn.style.cssText='background:#f2f2f7;border:none;border-radius:12px;padding:12px 20px;font-size:15px;font-weight:600;color:#007aff;cursor:pointer;width:100%;';
-  addBtn.addEventListener('click',function(){addDetailItem();});
-  addRow.appendChild(addBtn);
-  container.appendChild(addRow);
-}
-
-function inlineEditItem(idx,val){
-  const v=parseInt(val);
-  if(isNaN(v)||v<0)return;
-  const k=_viewingDay||todayKey();
-  if(!logs[k])return;
-  const meal=logs[k].meals.find(m=>String(m.id)===String(currentMealId));
-  if(meal&&meal.items[idx]){
-    meal.items[idx].calories=v;
-    saveLogs();
-    const total=meal.items.reduce((s,i)=>s+(i.calories||0),0);
-    document.getElementById('detailTotal').textContent=total.toLocaleString();
-    showToast('✅ Updated!',2000);
-  }
-}
-
-function deleteDetailItem(idx){
-  const k=_viewingDay||todayKey();
-  if(!logs[k])return;
-  const meal=logs[k].meals.find(m=>String(m.id)===String(currentMealId));
-  if(!meal)return;
-  meal.items.splice(idx,1);
-  saveLogs();
-  renderDetailScreen(meal);
-  showToast('Removed');
-}
-
-function addDetailItem(){
-  document.getElementById('addItemName').value='';
-  document.getElementById('addItemCal').value='';
-  document.getElementById('addItemModal').classList.remove('hidden');
-  setTimeout(()=>document.getElementById('addItemName').focus(),100);
-}
-function closeAddItemModal(){document.getElementById('addItemModal').classList.add('hidden');}
-async function saveAddItem(){
-  const name=document.getElementById('addItemName').value.trim();
-  const manualCal=parseInt(document.getElementById('addItemCal').value);
-  if(!name){showToast('Enter an item name');return;}
-  closeAddItemModal();
-
-  const k=_viewingDay||todayKey();
-  if(!logs[k])return;
-  const meal=logs[k].meals.find(m=>String(m.id)===String(currentMealId));
-  if(!meal)return;
-
-  // If manual cal entered, skip AI
-  if(!isNaN(manualCal)&&manualCal>0){
-    meal.items.push({id:String(Date.now()),name,calories:manualCal,notes:''});
-    saveLogs();
-    renderDetailScreen(meal);
-    showToast('✅ Added '+name+' ('+manualCal+' cal)');
-    return;
-  }
-
-  // Otherwise estimate with AI
-  showToast('Estimating calories...');
-  document.getElementById('analyzingBarDetail').classList.remove('hidden');
-  try{
-    const result=await callGPT([{role:'user',content:'Estimate calories for: "'+name+'". Return ONLY JSON: [{"name":"'+name+'","calories":number,"notes":"portion"}]'}],100);
-    const items=JSON.parse(result.replace(/```json|```/g,'').trim());
-    const cal=items[0]?items[0].calories:0;
-    meal.items.push({id:String(Date.now()),name:items[0]?items[0].name:name,calories:cal,notes:items[0]?items[0].notes:''});
-    saveLogs();
-    renderDetailScreen(meal);
-    showToast('✅ Added '+name+' ('+cal+' cal)');
-  }catch(err){showToast('❌ '+(err.message||'Failed'));}
-  document.getElementById('analyzingBarDetail').classList.add('hidden');
-}
-
-// ─── FIX: closeTypeModal / submitTextLog ──────────────────
-function closeTypeModal(){document.getElementById('typeModal').classList.add('hidden');}
-async function submitTextLog(){
-  const text=document.getElementById('typeInput').value.trim();
-  if(!text){showToast('Enter what you ate');return;}
-  if(!requireKey())return;
-  closeTypeModal();
-  document.getElementById('analyzingBar').classList.remove('hidden');
-  showToast('Estimating calories...');
-  try{
-    const result=await callGPT([{role:'user',content:'Estimate calories for: "'+text+'". Return ONLY a JSON array: [{"name":"item","calories":number,"notes":"portion info"}]. No markdown.'}],300);
-    const items=JSON.parse(result.replace(/```json|```/g,'').trim());
-    const meal={id:String(Date.now()),items,time:timeLabel(),title:text,source:'text',imageData:null};
-    updateTodayData(d=>({...d,meals:[...(d.meals||[]),meal]}));
-    const total=items.reduce((s,i)=>s+(i.calories||0),0);
-    showToast('✅ Logged '+total+' cal');
-  }catch(err){showToast('❌ '+(err.message||'Failed'));}
-  document.getElementById('analyzingBar').classList.add('hidden');
-}
-
-// ─── FIX: closeItemEdit / saveItemEdit ───────────────────
-function closeItemEdit(){document.getElementById('itemEditModal').classList.add('hidden');editingItemIdx=null;}
-function saveItemEdit(){
-  const v=parseInt(document.getElementById('itemEditInput').value);
-  if(isNaN(v)||v<0){showToast('Enter a valid calorie amount');return;}
-  if(editingItemIdx===null)return;
-  const k=_viewingDay||todayKey();
-  if(!logs[k])return;
-  const meal=logs[k].meals.find(m=>String(m.id)===String(currentMealId));
-  if(meal&&meal.items[editingItemIdx]){
-    meal.items[editingItemIdx].calories=v;
-    saveLogs();
-    renderDetailScreen(meal);
-    showToast('✅ Updated!',2000);
-  }
-  closeItemEdit();
-}
-
-// ─── FIX: openEditTitle / closeEditTitle / saveEditTitle ──
-function openEditTitle(){
-  const k=_viewingDay||todayKey();
-  if(!logs[k])return;
-  const meal=logs[k].meals.find(m=>String(m.id)===String(currentMealId));
-  if(!meal)return;
-  const cleanTitle=(meal.title||'').replace(/```json|```/g,'').trim();
-  document.getElementById('editTitleInput').value=cleanTitle;
-  document.getElementById('editTitleModal').classList.remove('hidden');
-  setTimeout(()=>document.getElementById('editTitleInput').focus(),100);
-}
-function closeEditTitle(){document.getElementById('editTitleModal').classList.add('hidden');}
-function saveEditTitle(){
-  const val=document.getElementById('editTitleInput').value.trim();
-  if(!val){closeEditTitle();return;}
-  const k=_viewingDay||todayKey();
-  if(!logs[k])return;
-  const meal=logs[k].meals.find(m=>String(m.id)===String(currentMealId));
-  if(meal){
-    meal.title=val;
-    saveLogs();
-    renderDetailScreen(meal);
-    showToast('✅ Name updated');
-  }
-  closeEditTitle();
-}
-
-// ─── FIX: startFixVoice / toggleFixVoice / submitFix ─────
-function startFixVoice(){
-  const fixInputDiv=document.getElementById('fixInput');
-  const isOpen=fixInputDiv.style.display!=='none';
-  if(isOpen){fixInputDiv.style.display='none';document.getElementById('fixAiBtn').textContent='Fix with AI';return;}
-  fixInputDiv.style.display='block';
-  document.getElementById('fixAiBtn').textContent='Close';
-  fixInputDiv.innerHTML=`
-    <div class="fix-panel">
-      <div class="fix-panel-title">Describe what to change</div>
-      <input type="text" class="fix-input" id="fixTextInput" placeholder="e.g. It was a large portion, add a diet coke">
-      <div class="fix-btns">
-        <button class="fix-voice-btn" id="fixVoiceBtn" onclick="toggleFixVoice()">🎙 Voice</button>
-        <button class="fix-submit-btn" onclick="submitFix()">Update with AI</button>
-      </div>
-    </div>`;
-}
-function toggleFixVoice(){
-  const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SpeechRecognition){showToast('Voice not supported on this browser');return;}
-  if(isFixRecording){fixRecognition&&fixRecognition.stop();return;}
-  fixRecognition=new SpeechRecognition();
-  fixRecognition.lang='en-US';fixRecognition.interimResults=false;
-  isFixRecording=true;
-  document.getElementById('fixVoiceBtn').textContent='⏹ Stop';
-  fixRecognition.onresult=function(e){
-    document.getElementById('fixTextInput').value=e.results[0][0].transcript;
-    isFixRecording=false;
-    document.getElementById('fixVoiceBtn').textContent='🎙 Voice';
-  };
-  fixRecognition.onerror=fixRecognition.onend=function(){
-    isFixRecording=false;
-    const btn=document.getElementById('fixVoiceBtn');
-    if(btn)btn.textContent='🎙 Voice';
-  };
-  fixRecognition.start();
-}
-async function submitFix(){
-  const text=document.getElementById('fixTextInput').value.trim();
-  if(!text){showToast('Describe what to fix');return;}
-  const k=_viewingDay||todayKey();
-  if(!logs[k])return;
-  const meal=logs[k].meals.find(m=>String(m.id)===String(currentMealId));
-  if(!meal)return;
-  document.getElementById('analyzingBarDetail').classList.remove('hidden');
-  showToast('Updating meal...');
-  try{
-    const existing=JSON.stringify(meal.items);
-    const result=await callGPT([{role:'user',content:'Current meal items: '+existing+'\n\nUser says: "'+text+'"\n\nReturn updated JSON array of ALL items (add/remove/adjust as needed): [{"name":"item","calories":number,"notes":"portion"}]. No markdown.'}],400);
-    const items=JSON.parse(result.replace(/```json|```/g,'').trim());
-    meal.items=items;
-    saveLogs();
-    renderDetailScreen(meal);
-    document.getElementById('fixInput').style.display='none';
-    document.getElementById('fixAiBtn').textContent='Fix with AI';
-    showToast('✅ Meal updated');
-  }catch(err){showToast('❌ '+(err.message||'Failed'));}
-  document.getElementById('analyzingBarDetail').classList.add('hidden');
-}
-
-// ─── FIX: startVoice ─────────────────────────────────────
-function startVoice(){
-  const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SpeechRecognition){showToast('Voice not supported on this browser');return;}
-  if(isRecording){recognition&&recognition.stop();return;}
-  recognition=new SpeechRecognition();
-  recognition.lang='en-US';recognition.interimResults=false;recognition.maxAlternatives=1;
-  isRecording=true;
-  document.getElementById('voiceBtn').classList.add('rec');
-  document.getElementById('micLabel').textContent='Listening...';
-  document.getElementById('micSub').textContent='Tap to stop';
-  recognition.onresult=function(e){
-    const transcript=e.results[0][0].transcript;
-    isRecording=false;
-    document.getElementById('voiceBtn').classList.remove('rec');
-    document.getElementById('micLabel').textContent='Voice';
-    document.getElementById('micSub').textContent='Say what you ate';
-    if(!requireKey())return;
-    document.getElementById('typeInput').value=transcript;
-    submitTextLog();
-  };
-  recognition.onerror=function(){
-    isRecording=false;
-    document.getElementById('voiceBtn').classList.remove('rec');
-    document.getElementById('micLabel').textContent='Voice';
-    document.getElementById('micSub').textContent='Say what you ate';
-    showToast('Voice error — try again');
-  };
-  recognition.onend=function(){
-    if(isRecording){
-      isRecording=false;
-      document.getElementById('voiceBtn').classList.remove('rec');
-      document.getElementById('micLabel').textContent='Voice';
-      document.getElementById('micSub').textContent='Say what you ate';
-    }
-  };
-  recognition.start();
-}
-
-// ─── PHOTO ────────────────────────────────────────────────
-async function handlePhoto(event){
-  const file=event.target.files[0];
-  if(!file)return;
-  if(!requireKey()){event.target.value='';return;}
-  document.getElementById('analyzingBar').classList.remove('hidden');
-  showToast('Analyzing photo...');
-  const reader=new FileReader();
-  reader.onload=async function(e){
-    event.target.value='';
-    const imageData=e.target.result;
-    const img=new Image();
-    img.onload=async function(){
-      const canvas=document.createElement('canvas');
-      const max=800;
-      let w=img.width,h=img.height;
-      if(w>max){h=Math.round(h*max/w);w=max;}
-      if(h>max){w=Math.round(w*max/h);h=max;}
-      canvas.width=w;canvas.height=h;
-      canvas.getContext('2d').drawImage(img,0,0,w,h);
-      const compressed=canvas.toDataURL('image/jpeg',0.7);
-      const b64=compressed.split(',')[1];
-      try{
-        const result=await callGPT([{role:'user',content:[
-          {type:'image_url',image_url:{url:'data:image/jpeg;base64,'+b64}},
-          {type:'text',text:'List every food item visible. Return ONLY JSON array: [{"name":"item","calories":number,"notes":"portion"}]. No markdown.'}
-        ]}],400);
-        const items=JSON.parse(result.replace(/```json|```/g,'').trim());
-        const title=items.slice(0,2).map(i=>i.name).join(', ')+(items.length>2?'...':'');
-        const meal={id:String(Date.now()),items,time:timeLabel(),title,source:'photo',imageData:compressed};
-        updateTodayData(d=>({...d,meals:[...(d.meals||[]),meal]}));
-        const total=items.reduce((s,i)=>s+(i.calories||0),0);
-        showToast('✅ Logged '+total+' cal');
-      }catch(err){showToast('❌ '+(err.message||'Failed'));}
-      document.getElementById('analyzingBar').classList.add('hidden');
     };
-    img.src=imageData;
-  };
-  reader.readAsDataURL(file);
+    if(!active){cancelAnimationFrame(rafRef.current);try{streamRef.current?.getTracks().forEach(t=>t.stop());}catch{}streamRef.current=null;drawFlat();return;}
+    navigator.mediaDevices?.getUserMedia({audio:true,video:false}).then(stream=>{
+      streamRef.current=stream;
+      const ac=new (window.AudioContext||window.webkitAudioContext)();
+      const src=ac.createMediaStreamSource(stream);
+      const an=ac.createAnalyser(); an.fftSize=64; src.connect(an);
+      const buf=new Uint8Array(an.frequencyBinCount);
+      const draw=()=>{
+        rafRef.current=requestAnimationFrame(draw);
+        an.getByteFrequencyData(buf);
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        const bw=canvas.width/BARS, maxH=canvas.height*0.88;
+        for(let i=0;i<BARS;i++){
+          const val=buf[Math.floor(i*buf.length/BARS)]/255;
+          const h=Math.max(4,val*maxH);
+          ctx.fillStyle=`rgba(74,230,138,${0.3+val*0.7})`;
+          ctx.beginPath(); ctx.roundRect(i*bw+1,(canvas.height-h)/2,bw-2,h,3); ctx.fill();
+        }
+      };
+      draw();
+    }).catch(drawFlat);
+    return()=>{cancelAnimationFrame(rafRef.current);try{streamRef.current?.getTracks().forEach(t=>t.stop());}catch{}};
+  },[active]);
+
+  return <div style={{width:"100%",height:56,display:"flex",alignItems:"center"}}>
+    <canvas ref={canvasRef} width={340} height={56} style={{width:"100%",height:"100%",opacity:active?1:0.3,transition:"opacity 0.3s"}}/>
+  </div>;
 }
 
-// ─── CALL GPT ─────────────────────────────────────────────
-async function callGPT(messages,maxTokens=500){
-  const res=await fetch('https://api.openai.com/v1/chat/completions',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},
-    body:JSON.stringify({model:'gpt-4o',messages,max_tokens:maxTokens})
-  });
-  const data=await res.json();
-  if(data.error)throw new Error(data.error.message);
-  return data.choices[0].message.content;
+// ─── Weight sparkline ─────────────────────────────────────────────────────────
+function WeightSparkline({data}) {
+  if(data.length<2) return null;
+  const W=120,H=36,P=4,vals=data.map(d=>d.value);
+  const mn=Math.min(...vals),mx=Math.max(...vals);
+  const lo=mn-0.5,hi=mx+0.5,range=hi-lo||1;
+  const tx=i=>P+(i/(data.length-1))*(W-P*2);
+  const ty=v=>P+(1-(v-lo)/range)*(H-P*2);
+  const pts=data.map((d,i)=>`${tx(i)},${ty(d.value)}`).join(" ");
+  const area=`M${tx(0)},${ty(data[0].value)} `+data.slice(1).map((d,i)=>`L${tx(i+1)},${ty(d.value)}`).join(" ")+` L${tx(data.length-1)},${H} L${tx(0)},${H} Z`;
+  const last=data[data.length-1].value,prev=data[data.length-2].value;
+  const color=last<=prev?C.accent:C.red;
+  return <svg width={W} height={H} style={{overflow:"visible"}}>
+    <defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity="0.3"/><stop offset="100%" stopColor={color} stopOpacity="0"/></linearGradient></defs>
+    <path d={area} fill="url(#sg)"/>
+    <polyline points={pts} fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+    <circle cx={tx(data.length-1)} cy={ty(last)} r="3" fill={color}/>
+  </svg>;
 }
 
-// ─── DELETE MEAL ──────────────────────────────────────────
-function deleteMeal(mealId){
-  updateTodayData(d=>({...d,meals:(d.meals||[]).filter(m=>String(m.id)!==String(mealId))}));
-  showToast('Deleted');
+// ─── Ring ─────────────────────────────────────────────────────────────────────
+function Ring({eaten,goal}) {
+  const pct=Math.min((eaten/Math.max(goal,1))*100,100);
+  const r=48,cx=56,cy=56,sw=7,circ=2*Math.PI*r;
+  const color=pct>100?C.red:pct>85?"#FF9500":C.accent;
+  return <svg width="112" height="112" style={{filter:`drop-shadow(0 0 10px ${color}44)`,flexShrink:0}}>
+    <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={sw}/>
+    <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round"
+      strokeDasharray={`${(pct/100)*circ} ${circ}`} strokeDashoffset={circ*0.25}
+      style={{transition:"stroke-dasharray 0.5s ease,stroke 0.3s"}}/>
+    <text x={cx} y={cy-4} textAnchor="middle" fill="white" style={{fontSize:17,fontWeight:700,fontFamily:"'Plus Jakarta Sans',sans-serif"}}>{eaten}</text>
+    <text x={cx} y={cy+13} textAnchor="middle" fill="rgba(255,255,255,0.35)" style={{fontSize:8.5,fontFamily:"'Plus Jakarta Sans',sans-serif",letterSpacing:1}}>EATEN</text>
+  </svg>;
 }
 
-// ─── SWIPE ────────────────────────────────────────────────
-function addSwipe(wrap,onDelete){
-  const item=wrap.querySelector('.swipe-item')||wrap.querySelector('.detail-swipe-item');
-  const del=wrap.querySelector('.swipe-del')||wrap.querySelector('.detail-del');
-  if(!item)return;
-  let startX=0,currentX=0,swiping=false;
-  const threshold=60;
-  item.addEventListener('touchstart',function(e){startX=e.touches[0].clientX;swiping=true;},{passive:true});
-  item.addEventListener('touchmove',function(e){
-    if(!swiping)return;
-    currentX=e.touches[0].clientX-startX;
-    if(currentX<0){item.style.transform='translateX('+currentX+'px)';if(del)del.style.opacity=Math.min(-currentX/threshold,1);}
-  },{passive:true});
-  item.addEventListener('touchend',function(){
-    swiping=false;
-    if(currentX<-threshold){
-      item.style.transform='translateX(-90px)';
-      if(del){del.style.opacity='1';del.onclick=function(){onDelete();};}
-    } else {
-      item.style.transform='';
-      if(del)del.style.opacity='0';
+// ─── Meal card ────────────────────────────────────────────────────────────────
+function MealCard({meal,onTap,onQuickEdit}) {
+  const [editing,setEditing]=useState(false);
+  const [val,setVal]=useState(String(meal.totalCalories));
+  const commit=()=>{const n=parseInt(val);if(!isNaN(n)&&n>=0)onQuickEdit(meal.id,n);else setVal(String(meal.totalCalories));setEditing(false);};
+  return <div style={{display:"flex",alignItems:"center",gap:12,background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:"12px 14px",marginBottom:10,cursor:"pointer",animation:"fadeUp 0.25s ease"}} onClick={()=>{if(!editing)onTap(meal);}}>
+    {meal.imageBase64
+      ?<img src={`data:image/jpeg;base64,${meal.imageBase64}`} style={{width:54,height:54,borderRadius:12,objectFit:"cover",flexShrink:0}} alt=""/>
+      :<div style={{width:54,height:54,borderRadius:12,background:C.hover,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:22}}>{meal.emoji||"🍽️"}</span></div>
     }
-    currentX=0;
-  });
+    <div style={{flex:1,minWidth:0}}>
+      <p style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{meal.mealTitle}</p>
+      <p style={{fontSize:11,color:C.sub,lineHeight:1.4,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{meal.summary}</p>
+      <p style={{fontSize:10,color:C.dim,marginTop:3}}>{meal.time}</p>
+    </div>
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1,padding:"8px 10px",background:C.aDim,borderRadius:12,minWidth:56,cursor:"pointer",position:"relative",flexShrink:0}} onClick={e=>{e.stopPropagation();setEditing(true);setVal(String(meal.totalCalories));}}>
+      {editing
+        ?<input autoFocus style={{width:48,background:"transparent",border:"none",borderBottom:`2px solid ${C.accent}`,color:C.accent,fontSize:16,fontWeight:800,textAlign:"center",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif"}} value={val} onChange={e=>setVal(e.target.value)} onBlur={commit} onKeyDown={e=>e.key==="Enter"&&commit()} onClick={e=>e.stopPropagation()}/>
+        :<><span style={{fontSize:16,fontWeight:800,color:C.accent,letterSpacing:"-0.5px"}}>{meal.totalCalories}</span><span style={{fontSize:9,color:C.aMid,textTransform:"uppercase"}}>kcal</span><span style={{position:"absolute",top:4,right:4,color:C.aMid}}><IcEdit/></span></>
+      }
+    </div>
+  </div>;
 }
 
-// ─── HISTORY ──────────────────────────────────────────────
-function renderHistory(){
-  const c=document.getElementById('historyList');
-  const keys=Object.keys(logs).sort().reverse();
-  if(!keys.length){c.innerHTML='<div style="text-align:center;padding:40px;color:#aaa;font-size:15px;">No history yet</div>';return;}
-  c.innerHTML='';
-  keys.forEach(function(key){
-    const d=logs[key];
-    if(!d||!d.meals||!d.meals.length)return;
-    const foodCals=d.meals.reduce((s,m)=>s+m.items.reduce((ss,i)=>ss+(i.calories||0),0),0);
-    const exCals=(d.exercise||[]).reduce((s,e)=>s+(e.calories||0),0);
-    const stepCals=estimateStepCalories(d.steps);
-    const net=foodCals-(exCals+stepCals);
-    const dateLabel=new Date(key+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-    const div=document.createElement('div');
-    div.className='history-day';
-    let rows=d.meals.map(m=>{
-      const mCal=m.items.reduce((s,i)=>s+(i.calories||0),0);
-      const title=(m.title||m.items.map(i=>i.name).join(', ')).replace(/```json|```/g,'').trim();
-      return`<div class="history-item-row"><span>${title}</span><span class="history-item-cal">${mCal} cal</span></div>`;
-    }).join('');
-    div.innerHTML=`<div class="history-day-header"><div><div class="history-date">${dateLabel}</div><div class="history-meta">${d.meals.length} meal${d.meals.length!==1?'s':''}</div></div><div class="history-net">${net.toLocaleString()} cal</div></div>${rows}`;
-    c.appendChild(div);
-  });
+// ─── API Key screen ───────────────────────────────────────────────────────────
+function ApiKeyScreen({onSave}) {
+  const [val,setVal]=useState("");
+  const [err,setErr]=useState("");
+  const submit=()=>{if(!val.trim().startsWith("sk-")){setErr("Key must start with sk-");return;}onSave(val.trim());};
+  return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",background:C.bg}}>
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"40px 28px",width:"100%",maxWidth:380}}>
+      <span style={{fontSize:52,marginBottom:12}}>🔥</span>
+      <h1 style={{fontSize:32,fontWeight:800,color:C.text,textAlign:"center",lineHeight:1.15,letterSpacing:"-1px",marginBottom:6}}>j<span style={{color:C.accent}}>AI</span>mie's<br/>Calorie Tracker</h1>
+      <p style={{color:C.accent,fontSize:13,fontWeight:600,marginBottom:32,marginTop:6}}>Powered by GPT-4o Vision</p>
+      <div style={{width:"100%",background:C.surface,borderRadius:20,padding:"24px 20px",border:`1px solid ${C.border}`}}>
+        <p style={{color:C.sub,fontSize:13,lineHeight:1.7,textAlign:"center",marginBottom:16}}>Enter your OpenAI API key. Stored only on this device.</p>
+        <input style={{width:"100%",background:C.hover,border:`1px solid ${C.border}`,borderRadius:12,color:C.text,fontSize:15,padding:"14px 16px",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif"}} type="password" placeholder="sk-..." value={val} onChange={e=>{setVal(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+        {err&&<p style={{color:C.red,fontSize:12,marginTop:6}}>{err}</p>}
+        <button style={{width:"100%",background:C.accent,border:"none",borderRadius:14,color:C.bg,fontSize:15,fontWeight:700,padding:"16px",cursor:"pointer",marginTop:14}} onClick={submit}>Get Started →</button>
+      </div>
+      <p style={{color:C.dim,fontSize:11,marginTop:14}}>Your key never leaves this device.</p>
+    </div>
+  </div>;
 }
 
-// ─── INIT ─────────────────────────────────────────────────
-_lastRenderedDay=todayKey();
-document.addEventListener('visibilitychange',function(){
-  if(document.visibilityState==='visible'){
-    var today=todayKey();
-    if(_lastRenderedDay!==today){_viewingDay=null;_lastRenderedDay=today;showToast('New day!',3000);switchTab('today');}
-  }
-});
+// ─── Home screen ──────────────────────────────────────────────────────────────
+function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,meals,goal,setGoal,date,setDate}) {
+  const [editGoal,setEditGoal]=useState(false);
+  const [goalVal,setGoalVal]=useState(String(goal));
+  const [weightLog,setWeightLog]=useState(()=>loadWeights());
+  const [editWeight,setEditWeight]=useState(false);
+  const [weightVal,setWeightVal]=useState("");
+  const fileRef=useRef();
+  const eaten=meals.reduce((s,m)=>s+m.totalCalories,0);
+  const latestW=weightLog.length>0?weightLog[weightLog.length-1].value:0;
 
-renderHome();
-if(!apiKey)setTimeout(function(){showToast('Go to Settings to add your OpenAI key',6000);},800);
-setTimeout(function(){
-  if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.getSteps){
-    window.webkit.messageHandlers.getSteps.postMessage({});
-  }
-},1000);
+  const commitGoal=()=>{const n=parseInt(goalVal);if(!isNaN(n)&&n>0){setGoal(n);saveGoal(n);}else setGoalVal(String(goal));setEditGoal(false);};
+  const commitWeight=()=>{
+    const n=parseFloat(weightVal);
+    if(!isNaN(n)&&n>0){
+      const entry={date:fmtKey(new Date()),value:n};
+      const next=[...weightLog.filter(w=>w.date!==entry.date),entry].sort((a,b)=>a.date.localeCompare(b.date));
+      setWeightLog(next);saveWeights(next);
+    }
+    setEditWeight(false);
+  };
+  const shift=days=>{const d=new Date(date);d.setDate(d.getDate()+days);setDate(d);};
+
+  return <div style={{height:"100%",background:C.bg,overflowY:"auto",paddingBottom:40}}>
+    {/* Header */}
+    <div style={{padding:"env(safe-area-inset-top,44px) 20px 0",background:`linear-gradient(180deg,${C.surface} 0%,${C.bg} 100%)`}}>
+      <div style={{paddingTop:12,display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+        <span style={{fontSize:21}}>🔥</span>
+        <span style={{fontSize:17,fontWeight:700,color:C.text,letterSpacing:"-0.2px"}}>j<span style={{color:C.accent,fontWeight:800}}>AI</span>mie's Calorie Tracker</span>
+      </div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+        <button style={{width:34,height:34,borderRadius:10,background:C.hover,border:`1px solid ${C.border}`,color:C.sub,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>shift(-1)}><IcLeft/></button>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+          <span style={{fontSize:14,fontWeight:600,color:C.text}}>{fmtDisplay(date)}</span>
+          {!isToday(date)&&<button style={{background:C.aDim,border:`1px solid ${C.aMid}`,color:C.accent,borderRadius:20,fontSize:11,fontWeight:600,padding:"2px 10px",cursor:"pointer"}} onClick={()=>setDate(new Date())}>Today</button>}
+        </div>
+        <button style={{width:34,height:34,borderRadius:10,background:C.hover,border:`1px solid ${C.border}`,color:C.sub,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>shift(1)}><IcRight/></button>
+      </div>
+    </div>
+
+    {/* Stats row */}
+    <div style={{display:"flex",gap:0,padding:"0 16px 16px"}}>
+      <div style={{flex:1,display:"flex",flexDirection:"column",gap:3,padding:"16px 18px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:18}}>
+        <span style={{fontSize:10,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:2}}>Calories</span>
+        <div style={{display:"flex",alignItems:"baseline",gap:3,flexWrap:"wrap"}}>
+          <span style={{fontSize:28,fontWeight:800,color:C.text,letterSpacing:"-1px",lineHeight:1}}>{eaten}</span>
+          <span style={{fontSize:18,color:C.dim,fontWeight:300,margin:"0 3px"}}>/</span>
+          {editGoal
+            ?<input autoFocus style={{background:"transparent",border:"none",borderBottom:`2px solid ${C.accent}`,color:C.text,fontSize:28,fontWeight:800,fontFamily:"'Plus Jakarta Sans',sans-serif",letterSpacing:"-1px",outline:"none",padding:0,width:90,lineHeight:1}} value={goalVal} onChange={e=>setGoalVal(e.target.value)} onBlur={commitGoal} onKeyDown={e=>e.key==="Enter"&&commitGoal()}/>
+            :<span style={{fontSize:22,fontWeight:700,color:C.sub,letterSpacing:"-0.5px",cursor:"pointer",lineHeight:1}} onClick={()=>{setGoalVal(String(goal));setEditGoal(true);}}>{goal}</span>
+          }
+          {!editGoal&&<span style={{color:C.dim,cursor:"pointer",display:"inline-flex",alignItems:"center",marginLeft:3}} onClick={()=>{setGoalVal(String(goal));setEditGoal(true);}}><IcEdit/></span>}
+        </div>
+        <span style={{fontSize:10,color:C.dim,fontWeight:500,marginTop:1}}>{editGoal?"enter goal + return":"calories"}</span>
+      </div>
+      <div style={{width:12}}/>
+      <div style={{flex:1,display:"flex",flexDirection:"column",gap:3,padding:"16px 18px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:18}}>
+        <span style={{fontSize:10,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:2}}>Weight</span>
+        <div style={{display:"flex",alignItems:"baseline",gap:3}}>
+          {editWeight
+            ?<input autoFocus style={{background:"transparent",border:"none",borderBottom:`2px solid ${C.accent}`,color:C.text,fontSize:28,fontWeight:800,fontFamily:"'Plus Jakarta Sans',sans-serif",letterSpacing:"-1px",outline:"none",padding:0,width:90,lineHeight:1}} placeholder="0" value={weightVal} onChange={e=>setWeightVal(e.target.value)} onBlur={commitWeight} onKeyDown={e=>e.key==="Enter"&&commitWeight()}/>
+            :<span style={{fontSize:28,fontWeight:800,color:C.text,letterSpacing:"-1px",lineHeight:1,cursor:"pointer"}} onClick={()=>{setWeightVal(latestW>0?String(latestW):"");setEditWeight(true);}}>{latestW>0?latestW:"—"}</span>
+          }
+          {!editWeight&&<span style={{color:C.dim,cursor:"pointer",display:"inline-flex",alignItems:"center",marginLeft:3}} onClick={()=>{setWeightVal(latestW>0?String(latestW):"");setEditWeight(true);}}><IcEdit/></span>}
+        </div>
+        <span style={{fontSize:10,color:C.dim,fontWeight:500,marginTop:1}}>{editWeight?"lbs, then return":"lbs"}</span>
+        {weightLog.length>=2&&<div style={{marginTop:6}}><WeightSparkline data={weightLog}/></div>}
+      </div>
+    </div>
+
+    {/* Add buttons */}
+    <div style={{display:"flex",gap:12,padding:"0 16px 18px"}}>
+      <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,color:C.text,cursor:"pointer"}} onClick={()=>fileRef.current.click()}><IcCamera/></button>
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>onOpenCamera(ev.target.result.split(",")[1],ev.target.result);r.readAsDataURL(f);e.target.value="";}}/>
+      <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",background:C.aDim,border:`1px solid ${C.aMid}`,borderRadius:16,color:C.accent,cursor:"pointer"}} onClick={onOpenVoice}><IcMic/></button>
+    </div>
+
+    {/* Meals */}
+    <div style={{padding:"0 16px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <span style={{fontSize:15,fontWeight:700,color:C.text}}>Meals</span>
+        <span style={{fontSize:12,color:C.dim}}>{meals.length} {meals.length===1?"entry":"entries"}</span>
+      </div>
+      {meals.length===0
+        ?<div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"48px 20px",gap:10}}>
+          <span style={{fontSize:36}}>🍽️</span>
+          <p style={{color:C.sub,fontSize:14,textAlign:"center",lineHeight:1.6}}>No meals yet.<br/>Tap 📷 or 🎤 to log your first.</p>
+        </div>
+        :[...meals].reverse().map(m=><MealCard key={m.id} meal={m} onTap={onSelectMeal} onQuickEdit={(id,cal)=>onSelectMeal({...m,_quickEdit:true,_newCal:cal})}/>)
+      }
+    </div>
+  </div>;
+}
+
+// ─── Voice screen ─────────────────────────────────────────────────────────────
+function VoiceScreen({apiKey,onBack,onAdd}) {
+  const [phase,setPhase]=useState("idle");
+  const [transcript,setTranscript]=useState("");
+  const [error,setError]=useState("");
+  const [elapsed,setElapsed]=useState(0);
+  const mrRef=useRef(null), chunksRef=useRef([]), timerRef=useRef(null), streamRef=useRef(null);
+
+  const fmtTime=s=>`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+
+  const stopAll=()=>{
+    clearInterval(timerRef.current);
+    try{mrRef.current?.stop();}catch{}
+    try{streamRef.current?.getTracks().forEach(t=>t.stop());}catch{}
+  };
+
+  const startRec=async()=>{
+    setPhase("requesting");setError("");setElapsed(0);chunksRef.current=[];
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      streamRef.current=stream;
+      // Pick the best supported mimeType for this browser/device
+      const mimeTypes=["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/ogg","audio/wav",""];
+      const mimeType=mimeTypes.find(m=>!m||MediaRecorder.isTypeSupported(m))||"";
+      const mr=new MediaRecorder(stream,mimeType?{mimeType}:{});
+      mr.ondataavailable=e=>{if(e.data.size>0)chunksRef.current.push(e.data);};
+      mr.onstop=async()=>{
+        stream.getTracks().forEach(t=>t.stop());
+        const mtype=mr.mimeType||"audio/webm";
+        const blob=new Blob(chunksRef.current,{type:mtype});
+        if(blob.size<1000){setPhase("idle");return;}
+        setPhase("transcribing");
+        try{const text=await transcribeAudio(apiKey,blob);setTranscript(text);setPhase("editing");}
+        catch(e){setError(e.message||"Transcription failed");setPhase("editing");}
+      };
+      mr.start(250);mrRef.current=mr;setPhase("recording");
+    }catch(e){
+      setError("Microphone access denied. Type your meal below.");
+      setPhase("editing");
+    }
+  };
+
+  const stopRec=()=>{try{mrRef.current?.stop();}catch{}};
+
+  useEffect(()=>{
+    if(phase==="recording"){timerRef.current=setInterval(()=>setElapsed(e=>e+1),1000);}
+    else clearInterval(timerRef.current);
+    return()=>clearInterval(timerRef.current);
+  },[phase]);
+
+  useEffect(()=>{startRec();return stopAll;},[]);
+
+  const submit=async()=>{
+    if(!transcript.trim())return;
+    setPhase("processing");
+    try{
+      const r=await analyze(apiKey,null,transcript);
+      const now=new Date();
+      onAdd({id:uid(),mealTitle:r.mealTitle,totalCalories:r.totalCalories,ingredients:r.ingredients||[],summary:r.summary,imageBase64:null,time:now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),addedAt:now.getTime(),emoji:EMOJIS[Math.floor(Math.random()*EMOJIS.length)]});
+    }catch(e){setError(e.message||"Error — check API key");setPhase("editing");}
+  };
+
+  if(phase==="transcribing")return <Spinner text="Transcribing your voice…"/>;
+  if(phase==="processing")return <Spinner text="Calculating calories…"/>;
+
+  const isRec=phase==="recording", isReq=phase==="requesting";
+
+  return <div style={{height:"100%",background:C.bg,overflowY:"auto",paddingBottom:40}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"env(safe-area-inset-top,44px) 16px 12px",paddingTop:`calc(env(safe-area-inset-top,44px) + 12px)`}}>
+      <button style={{width:44,height:44,borderRadius:12,background:C.hover,border:`1px solid ${C.border}`,color:C.text,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>{stopAll();onBack();}}><IcBack/></button>
+      <span style={{fontSize:16,fontWeight:700,color:C.text}}>Voice Log</span>
+      <div style={{width:44}}/>
+    </div>
+    <div style={{display:"flex",flexDirection:"column",gap:16,padding:"8px 20px 40px"}}>
+      {/* Big mic */}
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,paddingTop:8,paddingBottom:4}}>
+        <div onClick={isRec?stopRec:startRec} style={{
+          width:100,height:100,borderRadius:"50%",
+          background:isRec?"rgba(255,68,68,0.12)":isReq?"rgba(255,255,255,0.04)":"rgba(74,230,138,0.1)",
+          border:`2px solid ${isRec?C.red:isReq?C.border:C.accent}`,
+          display:"flex",alignItems:"center",justifyContent:"center",
+          cursor:isReq?"default":"pointer",transition:"all 0.3s",
+          boxShadow:isRec?`0 0 0 12px rgba(255,68,68,0.06),0 0 0 24px rgba(255,68,68,0.03)`:isReq?"none":`0 0 0 12px rgba(74,230,138,0.06)`,
+          animation:isRec?"ripple 1.5s ease-out infinite":"none"
+        }}>
+          <div style={{color:isRec?C.red:isReq?C.dim:C.accent}}>
+            {isRec?<IcStop size={32}/>:<IcMic size={40}/>}
+          </div>
+        </div>
+        <div style={{textAlign:"center"}}>
+          <p style={{fontSize:15,fontWeight:600,color:isRec?C.red:isReq?C.dim:C.sub}}>
+            {isReq?"Starting microphone…":isRec?`Recording  ${fmtTime(elapsed)}`:phase==="editing"?"Tap mic to record again":"Tap mic to start"}
+          </p>
+          {isRec&&<p style={{fontSize:12,color:C.dim,marginTop:4}}>Tap to stop when done speaking</p>}
+        </div>
+      </div>
+
+      <VoiceVisualizer active={isRec}/>
+
+      {(phase==="editing"||transcript)&&<textarea autoFocus={phase==="editing"} style={{width:"100%",minHeight:110,background:C.surface,border:`1px solid ${transcript?C.aMid:C.border}`,borderRadius:14,color:transcript?C.text:C.sub,fontSize:14,padding:"14px 16px",resize:"none",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",lineHeight:1.65,transition:"border-color 0.2s"}} placeholder="Tap to type what you ate…" value={transcript} onChange={e=>setTranscript(e.target.value)}/>}
+      {phase==="idle"&&!transcript&&<textarea style={{width:"100%",minHeight:80,background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,color:C.sub,fontSize:14,padding:"14px 16px",resize:"none",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",lineHeight:1.65}} placeholder="Or type your meal here…" value={transcript} onChange={e=>setTranscript(e.target.value)}/>}
+
+      {error&&<p style={{color:C.red,fontSize:13,textAlign:"center",lineHeight:1.5}}>{error}</p>}
+      <button style={{width:"100%",background:C.accent,border:"none",borderRadius:14,color:C.bg,fontSize:15,fontWeight:700,padding:"16px",cursor:"pointer",opacity:transcript.trim()?1:0.3}} onClick={submit} disabled={!transcript.trim()}>Add to Log →</button>
+    </div>
+  </div>;
+}
+
+// ─── Photo screen ─────────────────────────────────────────────────────────────
+function PhotoScreen({apiKey,imageBase64,imagePreview,onBack,onAdd}) {
+  const [phase,setPhase]=useState("idle");
+  const [transcript,setTranscript]=useState("");
+  const [error,setError]=useState("");
+  const [elapsed,setElapsed]=useState(0);
+  const mrRef=useRef(null),chunksRef=useRef([]),timerRef=useRef(null),streamRef=useRef(null);
+
+  const fmtTime=s=>`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+  const stopAll=()=>{clearInterval(timerRef.current);try{mrRef.current?.stop();}catch{}try{streamRef.current?.getTracks().forEach(t=>t.stop());}catch{}};
+
+  const startRec=async()=>{
+    setPhase("requesting");setError("");setElapsed(0);chunksRef.current=[];
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      streamRef.current=stream;
+      const mimeTypes=["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/ogg",""];
+      const mimeType=mimeTypes.find(m=>!m||MediaRecorder.isTypeSupported(m))||"";
+      const mr=new MediaRecorder(stream,mimeType?{mimeType}:{});
+      mr.ondataavailable=e=>{if(e.data.size>0)chunksRef.current.push(e.data);};
+      mr.onstop=async()=>{
+        stream.getTracks().forEach(t=>t.stop());
+        const mtype=mr.mimeType||"audio/webm";
+        const blob=new Blob(chunksRef.current,{type:mtype});
+        if(blob.size<1000){setPhase("editing");return;}
+        setPhase("transcribing");
+        try{const text=await transcribeAudio(apiKey,blob);setTranscript(text);setPhase("editing");}
+        catch(e){setError(e.message||"Transcription failed");setPhase("editing");}
+      };
+      mr.start(250);mrRef.current=mr;setPhase("recording");
+    }catch(e){setError("Mic access denied. Describe the meal below.");setPhase("editing");}
+  };
+
+  const stopRec=()=>{try{mrRef.current?.stop();}catch{}};
+
+  useEffect(()=>{if(phase==="recording"){timerRef.current=setInterval(()=>setElapsed(e=>e+1),1000);}else clearInterval(timerRef.current);return()=>clearInterval(timerRef.current);},[phase]);
+  useEffect(()=>{startRec();return stopAll;},[]);
+
+  const submit=async()=>{
+    if(!transcript.trim())return;
+    setPhase("processing");
+    try{
+      const r=await analyze(apiKey,imageBase64,transcript);
+      const now=new Date();
+      onAdd({id:uid(),mealTitle:r.mealTitle,totalCalories:r.totalCalories,ingredients:r.ingredients||[],summary:r.summary,imageBase64,time:now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),addedAt:now.getTime(),emoji:null});
+    }catch(e){setError(e.message||"Error");setPhase("editing");}
+  };
+
+  if(phase==="transcribing")return <Spinner text="Transcribing your voice…"/>;
+  if(phase==="processing")return <Spinner text="Analyzing with GPT-4o…"/>;
+
+  const isRec=phase==="recording",isReq=phase==="requesting";
+
+  return <div style={{height:"100%",background:C.bg,overflowY:"auto",paddingBottom:40}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"env(safe-area-inset-top,44px) 16px 12px",paddingTop:`calc(env(safe-area-inset-top,44px) + 12px)`}}>
+      <button style={{width:44,height:44,borderRadius:12,background:C.hover,border:`1px solid ${C.border}`,color:C.text,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>{stopAll();onBack();}}><IcBack/></button>
+      <span style={{fontSize:16,fontWeight:700,color:C.text}}>Describe Your Meal</span>
+      <div style={{width:44}}/>
+    </div>
+    <div style={{display:"flex",flexDirection:"column",gap:14,padding:"8px 20px 40px"}}>
+      {imagePreview&&<img src={imagePreview} style={{width:"100%",maxHeight:210,objectFit:"cover",borderRadius:18,border:`1px solid ${C.border}`}} alt=""/>}
+      <div style={{display:"flex",alignItems:"center",gap:14,padding:"10px 0"}}>
+        <div onClick={isRec?stopRec:startRec} style={{width:56,height:56,borderRadius:"50%",flexShrink:0,background:isRec?"rgba(255,68,68,0.12)":"rgba(74,230,138,0.1)",border:`2px solid ${isRec?C.red:isReq?C.border:C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:isReq?"default":"pointer",transition:"all 0.3s"}}>
+          <div style={{color:isRec?C.red:isReq?C.dim:C.accent}}>{isRec?<IcStop/>:<IcMic size={24}/>}</div>
+        </div>
+        <div>
+          <p style={{fontSize:14,fontWeight:600,color:isRec?C.red:C.sub}}>{isReq?"Starting mic…":isRec?`Recording  ${fmtTime(elapsed)}`:"Tap to record description"}</p>
+          {isRec&&<p style={{fontSize:11,color:C.dim,marginTop:2}}>Tap stop when done</p>}
+        </div>
+      </div>
+      <VoiceVisualizer active={isRec}/>
+      <textarea style={{width:"100%",minHeight:90,background:C.surface,border:`1px solid ${transcript?C.aMid:C.border}`,borderRadius:14,color:transcript?C.text:C.sub,fontSize:14,padding:"14px 16px",resize:"none",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",lineHeight:1.65}} placeholder={"Describe the meal — ingredients, portions…\nOr tap to type."} value={transcript} onChange={e=>setTranscript(e.target.value)}/>
+      {error&&<p style={{color:C.red,fontSize:13,textAlign:"center"}}>{error}</p>}
+      <button style={{width:"100%",background:C.accent,border:"none",borderRadius:14,color:C.bg,fontSize:15,fontWeight:700,padding:"16px",cursor:"pointer",opacity:transcript.trim()?1:0.35}} onClick={submit} disabled={!transcript.trim()}>Analyze & Add →</button>
+    </div>
+  </div>;
+}
+
+// ─── Detail screen ────────────────────────────────────────────────────────────
+function DetailScreen({meal,onBack,onUpdate,onDelete}) {
+  const [ings,setIngs]=useState(meal.ingredients||[]);
+  const [editTotal,setEditTotal]=useState(false);
+  const [totalVal,setTotalVal]=useState(String(meal.totalCalories));
+  const [editIdx,setEditIdx]=useState(null);
+  const [ingVal,setIngVal]=useState("");
+
+  const commitTotal=()=>{const n=parseInt(totalVal);if(!isNaN(n)&&n>=0)onUpdate({...meal,totalCalories:n,ingredients:ings});else setTotalVal(String(meal.totalCalories));setEditTotal(false);};
+  const commitIng=idx=>{const n=parseInt(ingVal);if(!isNaN(n)&&n>=0){const next=ings.map((x,i)=>i===idx?{...x,calories:n}:x);setIngs(next);const tot=next.reduce((s,x)=>s+x.calories,0);setTotalVal(String(tot));onUpdate({...meal,totalCalories:tot,ingredients:next});}setEditIdx(null);};
+
+  return <div style={{height:"100%",background:C.bg,overflowY:"auto",paddingBottom:48}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"env(safe-area-inset-top,44px) 16px 12px",paddingTop:`calc(env(safe-area-inset-top,44px) + 12px)`}}>
+      <button style={{width:44,height:44,borderRadius:12,background:C.hover,border:`1px solid ${C.border}`,color:C.text,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={onBack}><IcBack/></button>
+      <span style={{fontSize:16,fontWeight:700,color:C.text}}>Meal Details</span>
+      <button style={{width:44,height:44,borderRadius:12,background:C.rDim,border:`1px solid ${C.rMid}`,color:C.red,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>onDelete(meal.id)}><IcTrash/></button>
+    </div>
+    {meal.imageBase64
+      ?<img src={`data:image/jpeg;base64,${meal.imageBase64}`} style={{width:"100%",height:250,objectFit:"cover"}} alt=""/>
+      :<div style={{width:"100%",height:180,background:C.surface,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:56}}>{meal.emoji||"🍽️"}</span></div>
+    }
+    <div style={{padding:"20px 20px 40px"}}>
+      <h2 style={{fontSize:22,fontWeight:800,color:C.text,marginBottom:6,letterSpacing:"-0.5px"}}>{meal.mealTitle}</h2>
+      <p style={{fontSize:13,color:C.sub,lineHeight:1.6,marginBottom:5}}>{meal.summary}</p>
+      <p style={{fontSize:11,color:C.dim,marginBottom:20}}>{meal.time}</p>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 18px",background:C.aDim,border:`1px solid ${C.aMid}`,borderRadius:16,marginBottom:18,cursor:"pointer"}} onClick={()=>{setTotalVal(String(meal.totalCalories));setEditTotal(true);}}>
+        <span style={{fontSize:14,fontWeight:700,color:C.text}}>Total Calories</span>
+        {editTotal
+          ?<input autoFocus style={{width:80,background:"transparent",border:"none",borderBottom:`2px solid ${C.accent}`,color:C.accent,fontSize:28,fontWeight:800,fontFamily:"'Plus Jakarta Sans',sans-serif",outline:"none",textAlign:"right"}} value={totalVal} onChange={e=>setTotalVal(e.target.value)} onBlur={commitTotal} onKeyDown={e=>e.key==="Enter"&&commitTotal()} onClick={e=>e.stopPropagation()}/>
+          :<div style={{display:"flex",alignItems:"center",gap:6,color:C.accent}}><span style={{fontSize:28,fontWeight:800,letterSpacing:"-1px"}}>{meal.totalCalories}</span><span style={{fontSize:12,opacity:0.7}}>kcal</span><IcEdit size={14}/></div>
+        }
+      </div>
+      {ings.length>0&&<div style={{background:C.surface,borderRadius:16,border:`1px solid ${C.border}`,overflow:"hidden"}}>
+        <p style={{fontSize:11,fontWeight:700,color:C.sub,textTransform:"uppercase",letterSpacing:"1px",padding:"12px 16px 8px"}}>Breakdown</p>
+        {ings.map((ing,idx)=><div key={idx} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 16px",borderTop:`1px solid ${C.border}`}}>
+          <span style={{fontSize:14,color:C.text,flex:1}}>{ing.name}</span>
+          {editIdx===idx
+            ?<input autoFocus style={{width:70,background:"transparent",border:"none",borderBottom:`2px solid ${C.accent}`,color:C.accent,fontSize:14,fontWeight:600,textAlign:"right",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif"}} value={ingVal} onChange={e=>setIngVal(e.target.value)} onBlur={()=>commitIng(idx)} onKeyDown={e=>e.key==="Enter"&&commitIng(idx)}/>
+            :<div style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",color:C.sub}} onClick={()=>{setEditIdx(idx);setIngVal(String(ing.calories));}}><span style={{fontSize:14,fontWeight:600}}>{ing.calories} kcal</span><IcEdit/></div>
+          }
+        </div>)}
+      </div>}
+    </div>
+  </div>;
+}
+
+// ─── App root ─────────────────────────────────────────────────────────────────
+function App() {
+  const [apiKey,setApiKey]=useState(()=>loadKey());
+  const [screen,setScreen]=useState("home");
+  const [date,setDate]=useState(new Date());
+  const [meals,setMeals]=useState(()=>loadMeals(fmtKey(new Date())));
+  const [goal,setGoal]=useState(()=>loadGoal());
+  const [selected,setSelected]=useState(null);
+  const [camImg,setCamImg]=useState({b64:null,preview:null});
+
+  useEffect(()=>{setMeals(loadMeals(fmtKey(date)));},[date]);
+  useEffect(()=>{saveMeals(fmtKey(date),meals);},[meals]);
+
+  const addMeal=m=>{setMeals(p=>[...p,m]);setScreen("home");};
+  const updateMeal=m=>{setMeals(p=>p.map(x=>x.id===m.id?m:x));setSelected(m);};
+  const deleteMeal=id=>{setMeals(p=>p.filter(x=>x.id!==id));setScreen("home");};
+  const selectMeal=m=>{if(m._quickEdit){setMeals(p=>p.map(x=>x.id===m.id?{...x,totalCalories:m._newCal}:x));return;}setSelected(m);setScreen("detail");};
+
+  if(!apiKey)return <ApiKeyScreen onSave={k=>{saveKey(k);setApiKey(k);}}/>;
+
+  return <div style={{height:"100%"}}>
+    {screen==="home"&&<HomeScreen onOpenCamera={(b64,preview)=>{setCamImg({b64,preview});setScreen("camera");}} onOpenVoice={()=>setScreen("voice")} onSelectMeal={selectMeal} meals={meals} goal={goal} setGoal={g=>{setGoal(g);saveGoal(g);}} date={date} setDate={setDate}/>}
+    {screen==="camera"&&<PhotoScreen apiKey={apiKey} imageBase64={camImg.b64} imagePreview={camImg.preview} onBack={()=>setScreen("home")} onAdd={addMeal}/>}
+    {screen==="voice"&&<VoiceScreen apiKey={apiKey} onBack={()=>setScreen("home")} onAdd={addMeal}/>}
+    {screen==="detail"&&selected&&<DetailScreen meal={selected} onBack={()=>setScreen("home")} onUpdate={updateMeal} onDelete={deleteMeal}/>}
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>

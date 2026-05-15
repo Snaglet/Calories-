@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-<meta name="apple-mobile-web-app-title" content="jAImie"/>
+<meta name="apple-mobile-web-app-title" content="Just Calories"/>
 <meta name="theme-color" content="#0A0A0F"/>
-<title>jAImie's Calorie Tracker</title>
+<title>Just Calories</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
@@ -16,7 +16,6 @@ html,body{height:100%;background:#0A0A0F;font-family:'Plus Jakarta Sans',sans-se
 #root{height:100%;overflow:hidden}
 ::-webkit-scrollbar{width:0}
 @keyframes spin{to{transform:rotate(360deg)}}
-@keyframes wave{0%,100%{transform:scaleY(0.25);opacity:0.3}50%{transform:scaleY(1);opacity:1}}
 @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 @keyframes ripple{0%{box-shadow:0 0 0 0 rgba(255,68,68,0.4)}100%{box-shadow:0 0 0 20px rgba(255,68,68,0)}}
 textarea::placeholder{color:rgba(240,240,248,0.28);font-family:'Plus Jakarta Sans',sans-serif;font-size:13px}
@@ -30,7 +29,7 @@ button{font-family:'Plus Jakarta Sans',sans-serif}
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script type="text/babel">
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useCallback } = React;
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 const ls = {
@@ -41,10 +40,16 @@ const loadMeals = d => { try { return JSON.parse(ls.get(`jct:m:${d}`) || "[]"); 
 const saveMeals = (d,m) => ls.set(`jct:m:${d}`, JSON.stringify(m));
 const loadGoal = () => parseInt(ls.get("jct:goal") || "1600");
 const saveGoal = g => ls.set("jct:goal", String(g));
+// Store base goal separately from workout-adjusted goal
+const loadBaseGoal = () => parseInt(ls.get("jct:basegoal") || "1600");
+const saveBaseGoal = g => ls.set("jct:basegoal", String(g));
 const loadKey = () => ls.get("jct:apikey") || "";
 const saveKey = k => ls.set("jct:apikey", k);
 const loadWeights = () => { try { return JSON.parse(ls.get("jct:weights") || "[]"); } catch { return []; } };
 const saveWeights = w => ls.set("jct:weights", JSON.stringify(w));
+// Track whether mic permission has been granted before
+const hasMicPerm = () => ls.get("jct:micperm") === "granted";
+const setMicPerm = () => ls.set("jct:micperm", "granted");
 
 // ─── Date ─────────────────────────────────────────────────────────────────────
 const fmtKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
@@ -56,7 +61,7 @@ async function analyze(apiKey, imageBase64, description) {
   const content = [];
   if (imageBase64) content.push({type:"image_url",image_url:{url:`data:image/jpeg;base64,${imageBase64}`,detail:"high"}});
   const prompt = imageBase64
-    ? `Analyze this meal photo${description?` and this description: "${description}"`:""}. Return ONLY valid JSON, no markdown:\n{"mealTitle":"...","totalCalories":0,"ingredients":[{"name":"...","calories":0}],"summary":"..."}`
+    ? `Analyze this meal photo${description ? ` and this description: "${description}"` : ""}. Return ONLY valid JSON, no markdown:\n{"mealTitle":"...","totalCalories":0,"ingredients":[{"name":"...","calories":0}],"summary":"..."}`
     : `User described: "${description}". Estimate calories. Return ONLY valid JSON, no markdown:\n{"mealTitle":"...","totalCalories":0,"ingredients":[{"name":"...","calories":0}],"summary":"..."}`;
   content.push({type:"text",text:prompt});
   const res = await fetch("https://api.openai.com/v1/chat/completions",{
@@ -70,7 +75,6 @@ async function analyze(apiKey, imageBase64, description) {
 }
 
 async function transcribeAudio(apiKey, blob) {
-  // iOS Safari uses audio/mp4, try to use that if available
   const mimeType = blob.type || "audio/webm";
   const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("ogg") ? "ogg" : "webm";
   const fd = new FormData();
@@ -83,8 +87,7 @@ async function transcribeAudio(apiKey, blob) {
     body:fd
   });
   if(!res.ok){const e=await res.json();throw new Error(e.error?.message||"Whisper error");}
-  const data = await res.json();
-  return data.text || "";
+  return (await res.json()).text || "";
 }
 
 let _id = Date.now();
@@ -97,10 +100,11 @@ const C = {
   border:"rgba(255,255,255,0.06)",
   accent:"#4AE68A", aDim:"rgba(74,230,138,0.12)", aMid:"rgba(74,230,138,0.35)",
   text:"#F0F0F8", sub:"rgba(240,240,248,0.5)", dim:"rgba(240,240,248,0.22)",
-  red:"#FF4444", rDim:"rgba(255,68,68,0.14)", rMid:"rgba(255,68,68,0.35)"
+  red:"#FF4444", rDim:"rgba(255,68,68,0.14)", rMid:"rgba(255,68,68,0.35)",
+  orange:"#FF9500", oDim:"rgba(255,149,0,0.14)", oMid:"rgba(255,149,0,0.35)"
 };
 
-// ─── SVG Icons ────────────────────────────────────────────────────────────────
+// ─── Icons ────────────────────────────────────────────────────────────────────
 const IcCamera = () => <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>;
 const IcMic = ({size=25}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>;
 const IcStop = ({size=20}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>;
@@ -109,8 +113,9 @@ const IcRight = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none
 const IcEdit = ({size=13}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
 const IcBack = () => <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>;
 const IcTrash = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>;
+const IcFire = ({size=22}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z" fill="none"/><path d="M12 22c0 0-6-4-6-10 0-3.3 2.7-6 6-6s6 2.7 6 6c0 6-6 10-6 10z"/><path d="M12 12c0 0-2-1.5-2-3.5S11 5 12 5s2 1.5 2 3.5-2 3.5-2 3.5z"/></svg>;
 
-// ─── Shared components ────────────────────────────────────────────────────────
+// ─── Shared: Spinner ──────────────────────────────────────────────────────────
 function Spinner({text}) {
   return <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",gap:20,background:C.bg}}>
     <div style={{width:44,height:44,border:`3px solid ${C.border}`,borderTop:`3px solid ${C.accent}`,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
@@ -118,12 +123,12 @@ function Spinner({text}) {
   </div>;
 }
 
+// ─── Shared: Voice Visualizer ─────────────────────────────────────────────────
 function VoiceVisualizer({active}) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
   const streamRef = useRef(null);
   const BARS = 24;
-
   useEffect(() => {
     const canvas = canvasRef.current; if(!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -131,35 +136,26 @@ function VoiceVisualizer({active}) {
       ctx.clearRect(0,0,canvas.width,canvas.height);
       const bw = canvas.width/BARS;
       ctx.fillStyle = "rgba(74,230,138,0.18)";
-      for(let i=0;i<BARS;i++){
-        const h=4; ctx.beginPath();
-        ctx.roundRect(i*bw+1,(canvas.height-h)/2,bw-2,h,2); ctx.fill();
-      }
+      for(let i=0;i<BARS;i++){const h=4;ctx.beginPath();ctx.roundRect(i*bw+1,(canvas.height-h)/2,bw-2,h,2);ctx.fill();}
     };
     if(!active){cancelAnimationFrame(rafRef.current);try{streamRef.current?.getTracks().forEach(t=>t.stop());}catch{}streamRef.current=null;drawFlat();return;}
     navigator.mediaDevices?.getUserMedia({audio:true,video:false}).then(stream=>{
       streamRef.current=stream;
-      const ac=new (window.AudioContext||window.webkitAudioContext)();
+      const ac=new(window.AudioContext||window.webkitAudioContext)();
       const src=ac.createMediaStreamSource(stream);
-      const an=ac.createAnalyser(); an.fftSize=64; src.connect(an);
+      const an=ac.createAnalyser();an.fftSize=64;src.connect(an);
       const buf=new Uint8Array(an.frequencyBinCount);
       const draw=()=>{
         rafRef.current=requestAnimationFrame(draw);
         an.getByteFrequencyData(buf);
         ctx.clearRect(0,0,canvas.width,canvas.height);
-        const bw=canvas.width/BARS, maxH=canvas.height*0.88;
-        for(let i=0;i<BARS;i++){
-          const val=buf[Math.floor(i*buf.length/BARS)]/255;
-          const h=Math.max(4,val*maxH);
-          ctx.fillStyle=`rgba(74,230,138,${0.3+val*0.7})`;
-          ctx.beginPath(); ctx.roundRect(i*bw+1,(canvas.height-h)/2,bw-2,h,3); ctx.fill();
-        }
+        const bw=canvas.width/BARS,maxH=canvas.height*0.88;
+        for(let i=0;i<BARS;i++){const val=buf[Math.floor(i*buf.length/BARS)]/255;const h=Math.max(4,val*maxH);ctx.fillStyle=`rgba(74,230,138,${0.3+val*0.7})`;ctx.beginPath();ctx.roundRect(i*bw+1,(canvas.height-h)/2,bw-2,h,3);ctx.fill();}
       };
       draw();
     }).catch(drawFlat);
     return()=>{cancelAnimationFrame(rafRef.current);try{streamRef.current?.getTracks().forEach(t=>t.stop());}catch{}};
   },[active]);
-
   return <div style={{width:"100%",height:56,display:"flex",alignItems:"center"}}>
     <canvas ref={canvasRef} width={340} height={56} style={{width:"100%",height:"100%",opacity:active?1:0.3,transition:"opacity 0.3s"}}/>
   </div>;
@@ -169,14 +165,11 @@ function VoiceVisualizer({active}) {
 function WeightSparkline({data}) {
   if(data.length<2) return null;
   const W=120,H=36,P=4,vals=data.map(d=>d.value);
-  const mn=Math.min(...vals),mx=Math.max(...vals);
-  const lo=mn-0.5,hi=mx+0.5,range=hi-lo||1;
-  const tx=i=>P+(i/(data.length-1))*(W-P*2);
-  const ty=v=>P+(1-(v-lo)/range)*(H-P*2);
+  const mn=Math.min(...vals),mx=Math.max(...vals),lo=mn-0.5,hi=mx+0.5,range=hi-lo||1;
+  const tx=i=>P+(i/(data.length-1))*(W-P*2),ty=v=>P+(1-(v-lo)/range)*(H-P*2);
   const pts=data.map((d,i)=>`${tx(i)},${ty(d.value)}`).join(" ");
   const area=`M${tx(0)},${ty(data[0].value)} `+data.slice(1).map((d,i)=>`L${tx(i+1)},${ty(d.value)}`).join(" ")+` L${tx(data.length-1)},${H} L${tx(0)},${H} Z`;
-  const last=data[data.length-1].value,prev=data[data.length-2].value;
-  const color=last<=prev?C.accent:C.red;
+  const last=data[data.length-1].value,prev=data[data.length-2].value,color=last<=prev?C.accent:C.red;
   return <svg width={W} height={H} style={{overflow:"visible"}}>
     <defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity="0.3"/><stop offset="100%" stopColor={color} stopOpacity="0"/></linearGradient></defs>
     <path d={area} fill="url(#sg)"/>
@@ -185,41 +178,66 @@ function WeightSparkline({data}) {
   </svg>;
 }
 
-// ─── Ring ─────────────────────────────────────────────────────────────────────
-function Ring({eaten,goal}) {
-  const pct=Math.min((eaten/Math.max(goal,1))*100,100);
-  const r=48,cx=56,cy=56,sw=7,circ=2*Math.PI*r;
-  const color=pct>100?C.red:pct>85?"#FF9500":C.accent;
-  return <svg width="112" height="112" style={{filter:`drop-shadow(0 0 10px ${color}44)`,flexShrink:0}}>
-    <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={sw}/>
-    <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round"
-      strokeDasharray={`${(pct/100)*circ} ${circ}`} strokeDashoffset={circ*0.25}
-      style={{transition:"stroke-dasharray 0.5s ease,stroke 0.3s"}}/>
-    <text x={cx} y={cy-4} textAnchor="middle" fill="white" style={{fontSize:17,fontWeight:700,fontFamily:"'Plus Jakarta Sans',sans-serif"}}>{eaten}</text>
-    <text x={cx} y={cy+13} textAnchor="middle" fill="rgba(255,255,255,0.35)" style={{fontSize:8.5,fontFamily:"'Plus Jakarta Sans',sans-serif",letterSpacing:1}}>EATEN</text>
-  </svg>;
-}
-
 // ─── Meal card ────────────────────────────────────────────────────────────────
 function MealCard({meal,onTap,onQuickEdit}) {
   const [editing,setEditing]=useState(false);
   const [val,setVal]=useState(String(meal.totalCalories));
   const commit=()=>{const n=parseInt(val);if(!isNaN(n)&&n>=0)onQuickEdit(meal.id,n);else setVal(String(meal.totalCalories));setEditing(false);};
-  return <div style={{display:"flex",alignItems:"center",gap:12,background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:"12px 14px",marginBottom:10,cursor:"pointer",animation:"fadeUp 0.25s ease"}} onClick={()=>{if(!editing)onTap(meal);}}>
+  const isWorkout = meal.type === "workout";
+  return <div style={{display:"flex",alignItems:"center",gap:12,background:C.card,border:`1px solid ${isWorkout?C.oMid:C.border}`,borderRadius:16,padding:"12px 14px",marginBottom:10,cursor:"pointer",animation:"fadeUp 0.25s ease"}} onClick={()=>{if(!editing)onTap(meal);}}>
     {meal.imageBase64
       ?<img src={`data:image/jpeg;base64,${meal.imageBase64}`} style={{width:54,height:54,borderRadius:12,objectFit:"cover",flexShrink:0}} alt=""/>
-      :<div style={{width:54,height:54,borderRadius:12,background:C.hover,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:22}}>{meal.emoji||"🍽️"}</span></div>
+      :<div style={{width:54,height:54,borderRadius:12,background:isWorkout?C.oDim:C.hover,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:22}}>{isWorkout?"🔥":meal.emoji||"🍽️"}</span></div>
     }
     <div style={{flex:1,minWidth:0}}>
-      <p style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{meal.mealTitle}</p>
+      <p style={{fontSize:14,fontWeight:700,color:isWorkout?C.orange:C.text,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{meal.mealTitle}</p>
       <p style={{fontSize:11,color:C.sub,lineHeight:1.4,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{meal.summary}</p>
       <p style={{fontSize:10,color:C.dim,marginTop:3}}>{meal.time}</p>
     </div>
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1,padding:"8px 10px",background:C.aDim,borderRadius:12,minWidth:56,cursor:"pointer",position:"relative",flexShrink:0}} onClick={e=>{e.stopPropagation();setEditing(true);setVal(String(meal.totalCalories));}}>
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1,padding:"8px 10px",background:isWorkout?C.oDim:C.aDim,borderRadius:12,minWidth:56,cursor:"pointer",position:"relative",flexShrink:0}} onClick={e=>{e.stopPropagation();setEditing(true);setVal(String(meal.totalCalories));}}>
       {editing
-        ?<input autoFocus style={{width:48,background:"transparent",border:"none",borderBottom:`2px solid ${C.accent}`,color:C.accent,fontSize:16,fontWeight:800,textAlign:"center",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif"}} value={val} onChange={e=>setVal(e.target.value)} onBlur={commit} onKeyDown={e=>e.key==="Enter"&&commit()} onClick={e=>e.stopPropagation()}/>
-        :<><span style={{fontSize:16,fontWeight:800,color:C.accent,letterSpacing:"-0.5px"}}>{meal.totalCalories}</span><span style={{fontSize:9,color:C.aMid,textTransform:"uppercase"}}>kcal</span><span style={{position:"absolute",top:4,right:4,color:C.aMid}}><IcEdit/></span></>
+        ?<input autoFocus style={{width:48,background:"transparent",border:"none",borderBottom:`2px solid ${isWorkout?C.orange:C.accent}`,color:isWorkout?C.orange:C.accent,fontSize:16,fontWeight:800,textAlign:"center",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif"}} value={val} onChange={e=>setVal(e.target.value)} onBlur={commit} onKeyDown={e=>e.key==="Enter"&&commit()} onClick={e=>e.stopPropagation()}/>
+        :<><span style={{fontSize:16,fontWeight:800,color:isWorkout?C.orange:C.accent,letterSpacing:"-0.5px"}}>{isWorkout?"-":""}{meal.totalCalories}</span><span style={{fontSize:9,color:isWorkout?C.oMid:C.aMid,textTransform:"uppercase"}}>{isWorkout?"burned":"kcal"}</span><span style={{position:"absolute",top:4,right:4,color:isWorkout?C.oMid:C.aMid}}><IcEdit/></span></>
       }
+    </div>
+  </div>;
+}
+
+// ─── Workout modal ────────────────────────────────────────────────────────────
+function WorkoutModal({onAdd,onClose}) {
+  const [cal,setCal]=useState("");
+  const [label,setLabel]=useState("");
+  const inputRef=useRef();
+  useEffect(()=>{setTimeout(()=>inputRef.current?.focus(),100);},[]);
+  const submit=()=>{
+    const n=parseInt(cal);
+    if(isNaN(n)||n<=0) return;
+    const now=new Date();
+    onAdd({
+      id:uid(),
+      type:"workout",
+      mealTitle:label.trim()||"Workout",
+      totalCalories:n,
+      ingredients:[],
+      summary:`${n} calories burned`,
+      imageBase64:null,
+      time:now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),
+      addedAt:now.getTime(),
+      emoji:"🔥"
+    });
+  };
+  return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"flex-end",zIndex:100}} onClick={onClose}>
+    <div style={{width:"100%",background:C.surface,borderRadius:"20px 20px 0 0",padding:"24px 20px 48px",border:`1px solid ${C.border}`}} onClick={e=>e.stopPropagation()}>
+      <div style={{width:36,height:4,background:C.border,borderRadius:2,margin:"0 auto 20px"}}/>
+      <p style={{fontSize:17,fontWeight:800,color:C.text,marginBottom:4}}>Log Workout</p>
+      <p style={{fontSize:12,color:C.sub,marginBottom:20}}>Calories burned will increase today's goal</p>
+      <input ref={inputRef} type="number" inputMode="numeric" placeholder="Calories burned" value={cal} onChange={e=>setCal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}
+        style={{width:"100%",background:C.hover,border:`1px solid ${C.border}`,borderRadius:12,color:C.text,fontSize:22,fontWeight:800,padding:"14px 16px",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",marginBottom:12,letterSpacing:"-0.5px"}}/>
+      <input type="text" placeholder="Label (optional, e.g. OrangeTheory)" value={label} onChange={e=>setLabel(e.target.value)}
+        style={{width:"100%",background:C.hover,border:`1px solid ${C.border}`,borderRadius:12,color:C.text,fontSize:15,padding:"12px 16px",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",marginBottom:16}}/>
+      <button style={{width:"100%",background:C.orange,border:"none",borderRadius:14,color:"#fff",fontSize:15,fontWeight:700,padding:"16px",cursor:"pointer",opacity:parseInt(cal)>0?1:0.4}} onClick={submit} disabled={!(parseInt(cal)>0)}>
+        Add Workout 🔥
+      </button>
     </div>
   </div>;
 }
@@ -228,11 +246,11 @@ function MealCard({meal,onTap,onQuickEdit}) {
 function ApiKeyScreen({onSave}) {
   const [val,setVal]=useState("");
   const [err,setErr]=useState("");
-  const submit=()=>{if(!val.trim().startsWith("sk-")){setErr("Key must start with sk-");return;}onSave(val.trim());};
+  const submit=()=>{if(!val.trim().startsWith("sk-")){setErr("Must start with sk-");return;}onSave(val.trim());};
   return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",background:C.bg}}>
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"40px 28px",width:"100%",maxWidth:380}}>
-      <span style={{fontSize:52,marginBottom:12}}>🔥</span>
-      <h1 style={{fontSize:32,fontWeight:800,color:C.text,textAlign:"center",lineHeight:1.15,letterSpacing:"-1px",marginBottom:6}}>j<span style={{color:C.accent}}>AI</span>mie's<br/>Calorie Tracker</h1>
+      <span style={{fontSize:52,marginBottom:12}}>⚡</span>
+      <h1 style={{fontSize:32,fontWeight:800,color:C.text,textAlign:"center",lineHeight:1.15,letterSpacing:"-1px",marginBottom:6}}>Just Calories</h1>
       <p style={{color:C.accent,fontSize:13,fontWeight:600,marginBottom:32,marginTop:6}}>Powered by GPT-4o Vision</p>
       <div style={{width:"100%",background:C.surface,borderRadius:20,padding:"24px 20px",border:`1px solid ${C.border}`}}>
         <p style={{color:C.sub,fontSize:13,lineHeight:1.7,textAlign:"center",marginBottom:16}}>Enter your OpenAI API key. Stored only on this device.</p>
@@ -246,17 +264,29 @@ function ApiKeyScreen({onSave}) {
 }
 
 // ─── Home screen ──────────────────────────────────────────────────────────────
-function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,meals,goal,setGoal,date,setDate}) {
+function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,meals,goal,baseGoal,setGoal,setBaseGoal,date,setDate}) {
   const [editGoal,setEditGoal]=useState(false);
-  const [goalVal,setGoalVal]=useState(String(goal));
+  const [goalVal,setGoalVal]=useState(String(baseGoal));
   const [weightLog,setWeightLog]=useState(()=>loadWeights());
   const [editWeight,setEditWeight]=useState(false);
   const [weightVal,setWeightVal]=useState("");
+  const [showWorkout,setShowWorkout]=useState(false);
   const fileRef=useRef();
-  const eaten=meals.reduce((s,m)=>s+m.totalCalories,0);
+
+  // Meals are foods only; workouts are separate type
+  const eaten = meals.filter(m=>m.type!=="workout").reduce((s,m)=>s+m.totalCalories,0);
+  const burned = meals.filter(m=>m.type==="workout").reduce((s,m)=>s+m.totalCalories,0);
   const latestW=weightLog.length>0?weightLog[weightLog.length-1].value:0;
 
-  const commitGoal=()=>{const n=parseInt(goalVal);if(!isNaN(n)&&n>0){setGoal(n);saveGoal(n);}else setGoalVal(String(goal));setEditGoal(false);};
+  const commitGoal=()=>{
+    const n=parseInt(goalVal);
+    if(!isNaN(n)&&n>0){
+      setBaseGoal(n); saveBaseGoal(n);
+      // Recalculate effective goal = base + burned
+      setGoal(n+burned); saveGoal(n+burned);
+    } else setGoalVal(String(baseGoal));
+    setEditGoal(false);
+  };
   const commitWeight=()=>{
     const n=parseFloat(weightVal);
     if(!isNaN(n)&&n>0){
@@ -268,12 +298,17 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,meals,goal,setGoal,da
   };
   const shift=days=>{const d=new Date(date);d.setDate(d.getDate()+days);setDate(d);};
 
+  const handleAddWorkout=(workout)=>{
+    onAddWorkout(workout);
+    setShowWorkout(false);
+  };
+
   return <div style={{height:"100%",background:C.bg,overflowY:"auto",paddingBottom:40}}>
     {/* Header */}
     <div style={{padding:"env(safe-area-inset-top,44px) 20px 0",background:`linear-gradient(180deg,${C.surface} 0%,${C.bg} 100%)`}}>
       <div style={{paddingTop:12,display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
-        <span style={{fontSize:21}}>🔥</span>
-        <span style={{fontSize:17,fontWeight:700,color:C.text,letterSpacing:"-0.2px"}}>j<span style={{color:C.accent,fontWeight:800}}>AI</span>mie's Calorie Tracker</span>
+        <span style={{fontSize:21}}>⚡</span>
+        <span style={{fontSize:17,fontWeight:800,color:C.text,letterSpacing:"-0.5px"}}>Just Calories</span>
       </div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
         <button style={{width:34,height:34,borderRadius:10,background:C.hover,border:`1px solid ${C.border}`,color:C.sub,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>shift(-1)}><IcLeft/></button>
@@ -286,182 +321,82 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,meals,goal,setGoal,da
     </div>
 
     {/* Stats row */}
-    <div style={{display:"flex",gap:0,padding:"0 16px 16px"}}>
+    <div style={{display:"flex",gap:10,padding:"0 16px 16px"}}>
       <div style={{flex:1,display:"flex",flexDirection:"column",gap:3,padding:"16px 18px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:18}}>
-        <span style={{fontSize:10,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:2}}>Calories</span>
+        <span style={{fontSize:9,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:2}}>Calories</span>
         <div style={{display:"flex",alignItems:"baseline",gap:3,flexWrap:"wrap"}}>
-          <span style={{fontSize:28,fontWeight:800,color:C.text,letterSpacing:"-1px",lineHeight:1}}>{eaten}</span>
-          <span style={{fontSize:18,color:C.dim,fontWeight:300,margin:"0 3px"}}>/</span>
+          <span style={{fontSize:26,fontWeight:800,color:C.text,letterSpacing:"-1px",lineHeight:1}}>{eaten}</span>
+          <span style={{fontSize:16,color:C.dim,fontWeight:300,margin:"0 2px"}}>/</span>
           {editGoal
-            ?<input autoFocus style={{background:"transparent",border:"none",borderBottom:`2px solid ${C.accent}`,color:C.text,fontSize:28,fontWeight:800,fontFamily:"'Plus Jakarta Sans',sans-serif",letterSpacing:"-1px",outline:"none",padding:0,width:90,lineHeight:1}} value={goalVal} onChange={e=>setGoalVal(e.target.value)} onBlur={commitGoal} onKeyDown={e=>e.key==="Enter"&&commitGoal()}/>
-            :<span style={{fontSize:22,fontWeight:700,color:C.sub,letterSpacing:"-0.5px",cursor:"pointer",lineHeight:1}} onClick={()=>{setGoalVal(String(goal));setEditGoal(true);}}>{goal}</span>
+            ?<input autoFocus style={{background:"transparent",border:"none",borderBottom:`2px solid ${C.accent}`,color:C.text,fontSize:22,fontWeight:800,fontFamily:"'Plus Jakarta Sans',sans-serif",letterSpacing:"-0.5px",outline:"none",padding:0,width:80,lineHeight:1}} value={goalVal} onChange={e=>setGoalVal(e.target.value)} onBlur={commitGoal} onKeyDown={e=>e.key==="Enter"&&commitGoal()}/>
+            :<span style={{fontSize:20,fontWeight:700,color:C.sub,letterSpacing:"-0.5px",cursor:"pointer",lineHeight:1}} onClick={()=>{setGoalVal(String(baseGoal));setEditGoal(true);}}>{goal}</span>
           }
-          {!editGoal&&<span style={{color:C.dim,cursor:"pointer",display:"inline-flex",alignItems:"center",marginLeft:3}} onClick={()=>{setGoalVal(String(goal));setEditGoal(true);}}><IcEdit/></span>}
+          {!editGoal&&<span style={{color:C.dim,cursor:"pointer",display:"inline-flex",alignItems:"center",marginLeft:2}} onClick={()=>{setGoalVal(String(baseGoal));setEditGoal(true);}}><IcEdit/></span>}
         </div>
-        <span style={{fontSize:10,color:C.dim,fontWeight:500,marginTop:1}}>{editGoal?"enter goal + return":"calories"}</span>
+        <span style={{fontSize:9,color:C.dim,fontWeight:500,marginTop:1}}>
+          {editGoal?"enter base goal + return":burned>0?`${baseGoal} + ${burned} burned`:"calories eaten / goal"}
+        </span>
       </div>
-      <div style={{width:12}}/>
       <div style={{flex:1,display:"flex",flexDirection:"column",gap:3,padding:"16px 18px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:18}}>
-        <span style={{fontSize:10,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:2}}>Weight</span>
+        <span style={{fontSize:9,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:2}}>Weight</span>
         <div style={{display:"flex",alignItems:"baseline",gap:3}}>
           {editWeight
-            ?<input autoFocus style={{background:"transparent",border:"none",borderBottom:`2px solid ${C.accent}`,color:C.text,fontSize:28,fontWeight:800,fontFamily:"'Plus Jakarta Sans',sans-serif",letterSpacing:"-1px",outline:"none",padding:0,width:90,lineHeight:1}} placeholder="0" value={weightVal} onChange={e=>setWeightVal(e.target.value)} onBlur={commitWeight} onKeyDown={e=>e.key==="Enter"&&commitWeight()}/>
-            :<span style={{fontSize:28,fontWeight:800,color:C.text,letterSpacing:"-1px",lineHeight:1,cursor:"pointer"}} onClick={()=>{setWeightVal(latestW>0?String(latestW):"");setEditWeight(true);}}>{latestW>0?latestW:"—"}</span>
+            ?<input autoFocus style={{background:"transparent",border:"none",borderBottom:`2px solid ${C.accent}`,color:C.text,fontSize:26,fontWeight:800,fontFamily:"'Plus Jakarta Sans',sans-serif",letterSpacing:"-1px",outline:"none",padding:0,width:80,lineHeight:1}} placeholder="0" value={weightVal} onChange={e=>setWeightVal(e.target.value)} onBlur={commitWeight} onKeyDown={e=>e.key==="Enter"&&commitWeight()}/>
+            :<span style={{fontSize:26,fontWeight:800,color:C.text,letterSpacing:"-1px",lineHeight:1,cursor:"pointer"}} onClick={()=>{setWeightVal(latestW>0?String(latestW):"");setEditWeight(true);}}>{latestW>0?latestW:"—"}</span>
           }
-          {!editWeight&&<span style={{color:C.dim,cursor:"pointer",display:"inline-flex",alignItems:"center",marginLeft:3}} onClick={()=>{setWeightVal(latestW>0?String(latestW):"");setEditWeight(true);}}><IcEdit/></span>}
+          {!editWeight&&<span style={{color:C.dim,cursor:"pointer",display:"inline-flex",alignItems:"center",marginLeft:2}} onClick={()=>{setWeightVal(latestW>0?String(latestW):"");setEditWeight(true);}}><IcEdit/></span>}
         </div>
-        <span style={{fontSize:10,color:C.dim,fontWeight:500,marginTop:1}}>{editWeight?"lbs, then return":"lbs"}</span>
-        {weightLog.length>=2&&<div style={{marginTop:6}}><WeightSparkline data={weightLog}/></div>}
+        <span style={{fontSize:9,color:C.dim,fontWeight:500,marginTop:1}}>{editWeight?"lbs, then return":"lbs"}</span>
+        {weightLog.length>=2&&<div style={{marginTop:4}}><WeightSparkline data={weightLog}/></div>}
       </div>
     </div>
 
-    {/* Add buttons */}
-    <div style={{display:"flex",gap:12,padding:"0 16px 18px"}}>
-      <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,color:C.text,cursor:"pointer"}} onClick={()=>fileRef.current.click()}><IcCamera/></button>
+    {/* Add buttons: camera, mic, workout */}
+    <div style={{display:"flex",gap:10,padding:"0 16px 18px"}}>
+      <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"15px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,color:C.text,cursor:"pointer"}} onClick={()=>fileRef.current.click()}><IcCamera/></button>
       <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>onOpenCamera(ev.target.result.split(",")[1],ev.target.result);r.readAsDataURL(f);e.target.value="";}}/>
-      <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",background:C.aDim,border:`1px solid ${C.aMid}`,borderRadius:16,color:C.accent,cursor:"pointer"}} onClick={onOpenVoice}><IcMic/></button>
+      <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"15px",background:C.aDim,border:`1px solid ${C.aMid}`,borderRadius:16,color:C.accent,cursor:"pointer"}} onClick={onOpenVoice}><IcMic/></button>
+      <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"15px",background:C.oDim,border:`1px solid ${C.oMid}`,borderRadius:16,color:C.orange,cursor:"pointer",fontSize:22}} onClick={()=>setShowWorkout(true)}>🔥</button>
     </div>
 
-    {/* Meals */}
+    {/* Meals & Workouts list */}
     <div style={{padding:"0 16px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-        <span style={{fontSize:15,fontWeight:700,color:C.text}}>Meals</span>
+        <span style={{fontSize:15,fontWeight:700,color:C.text}}>Meals & Workouts</span>
         <span style={{fontSize:12,color:C.dim}}>{meals.length} {meals.length===1?"entry":"entries"}</span>
       </div>
       {meals.length===0
         ?<div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"48px 20px",gap:10}}>
           <span style={{fontSize:36}}>🍽️</span>
-          <p style={{color:C.sub,fontSize:14,textAlign:"center",lineHeight:1.6}}>No meals yet.<br/>Tap 📷 or 🎤 to log your first.</p>
+          <p style={{color:C.sub,fontSize:14,textAlign:"center",lineHeight:1.6}}>Nothing logged yet.<br/>Tap 📷, 🎤, or 🔥 to get started.</p>
         </div>
         :[...meals].reverse().map(m=><MealCard key={m.id} meal={m} onTap={onSelectMeal} onQuickEdit={(id,cal)=>onSelectMeal({...m,_quickEdit:true,_newCal:cal})}/>)
       }
     </div>
+
+    {showWorkout&&<WorkoutModal onAdd={handleAddWorkout} onClose={()=>setShowWorkout(false)}/>}
   </div>;
 }
 
-// ─── Voice screen ─────────────────────────────────────────────────────────────
-function VoiceScreen({apiKey,onBack,onAdd}) {
-  const [phase,setPhase]=useState("idle");
-  const [transcript,setTranscript]=useState("");
-  const [error,setError]=useState("");
-  const [elapsed,setElapsed]=useState(0);
-  const mrRef=useRef(null), chunksRef=useRef([]), timerRef=useRef(null), streamRef=useRef(null);
+// ─── Recording hook ───────────────────────────────────────────────────────────
+function useRecorder(apiKey, onTranscript) {
+  const [phase, setPhase] = useState("idle"); // idle | requesting | recording | transcribing
+  const [elapsed, setElapsed] = useState(0);
+  const mrRef=useRef(null),chunksRef=useRef([]),timerRef=useRef(null),streamRef=useRef(null);
 
-  const fmtTime=s=>`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+  const fmtTime = s => `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
 
-  const stopAll=()=>{
+  const stopAll = useCallback(() => {
     clearInterval(timerRef.current);
     try{mrRef.current?.stop();}catch{}
     try{streamRef.current?.getTracks().forEach(t=>t.stop());}catch{}
-  };
+  },[]);
 
-  const startRec=async()=>{
-    setPhase("requesting");setError("");setElapsed(0);chunksRef.current=[];
-    try{
-      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-      streamRef.current=stream;
-      // Pick the best supported mimeType for this browser/device
-      const mimeTypes=["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/ogg","audio/wav",""];
-      const mimeType=mimeTypes.find(m=>!m||MediaRecorder.isTypeSupported(m))||"";
-      const mr=new MediaRecorder(stream,mimeType?{mimeType}:{});
-      mr.ondataavailable=e=>{if(e.data.size>0)chunksRef.current.push(e.data);};
-      mr.onstop=async()=>{
-        stream.getTracks().forEach(t=>t.stop());
-        const mtype=mr.mimeType||"audio/webm";
-        const blob=new Blob(chunksRef.current,{type:mtype});
-        if(blob.size<1000){setPhase("idle");return;}
-        setPhase("transcribing");
-        try{const text=await transcribeAudio(apiKey,blob);setTranscript(text);setPhase("editing");}
-        catch(e){setError(e.message||"Transcription failed");setPhase("editing");}
-      };
-      mr.start(250);mrRef.current=mr;setPhase("recording");
-    }catch(e){
-      setError("Microphone access denied. Type your meal below.");
-      setPhase("editing");
-    }
-  };
-
-  const stopRec=()=>{try{mrRef.current?.stop();}catch{}};
-
-  useEffect(()=>{
-    if(phase==="recording"){timerRef.current=setInterval(()=>setElapsed(e=>e+1),1000);}
-    else clearInterval(timerRef.current);
-    return()=>clearInterval(timerRef.current);
-  },[phase]);
-
-  useEffect(()=>{startRec();return stopAll;},[]);
-
-  const submit=async()=>{
-    if(!transcript.trim())return;
-    setPhase("processing");
-    try{
-      const r=await analyze(apiKey,null,transcript);
-      const now=new Date();
-      onAdd({id:uid(),mealTitle:r.mealTitle,totalCalories:r.totalCalories,ingredients:r.ingredients||[],summary:r.summary,imageBase64:null,time:now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),addedAt:now.getTime(),emoji:EMOJIS[Math.floor(Math.random()*EMOJIS.length)]});
-    }catch(e){setError(e.message||"Error — check API key");setPhase("editing");}
-  };
-
-  if(phase==="transcribing")return <Spinner text="Transcribing your voice…"/>;
-  if(phase==="processing")return <Spinner text="Calculating calories…"/>;
-
-  const isRec=phase==="recording", isReq=phase==="requesting";
-
-  return <div style={{height:"100%",background:C.bg,overflowY:"auto",paddingBottom:40}}>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"env(safe-area-inset-top,44px) 16px 12px",paddingTop:`calc(env(safe-area-inset-top,44px) + 12px)`}}>
-      <button style={{width:44,height:44,borderRadius:12,background:C.hover,border:`1px solid ${C.border}`,color:C.text,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>{stopAll();onBack();}}><IcBack/></button>
-      <span style={{fontSize:16,fontWeight:700,color:C.text}}>Voice Log</span>
-      <div style={{width:44}}/>
-    </div>
-    <div style={{display:"flex",flexDirection:"column",gap:16,padding:"8px 20px 40px"}}>
-      {/* Big mic */}
-      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,paddingTop:8,paddingBottom:4}}>
-        <div onClick={isRec?stopRec:startRec} style={{
-          width:100,height:100,borderRadius:"50%",
-          background:isRec?"rgba(255,68,68,0.12)":isReq?"rgba(255,255,255,0.04)":"rgba(74,230,138,0.1)",
-          border:`2px solid ${isRec?C.red:isReq?C.border:C.accent}`,
-          display:"flex",alignItems:"center",justifyContent:"center",
-          cursor:isReq?"default":"pointer",transition:"all 0.3s",
-          boxShadow:isRec?`0 0 0 12px rgba(255,68,68,0.06),0 0 0 24px rgba(255,68,68,0.03)`:isReq?"none":`0 0 0 12px rgba(74,230,138,0.06)`,
-          animation:isRec?"ripple 1.5s ease-out infinite":"none"
-        }}>
-          <div style={{color:isRec?C.red:isReq?C.dim:C.accent}}>
-            {isRec?<IcStop size={32}/>:<IcMic size={40}/>}
-          </div>
-        </div>
-        <div style={{textAlign:"center"}}>
-          <p style={{fontSize:15,fontWeight:600,color:isRec?C.red:isReq?C.dim:C.sub}}>
-            {isReq?"Starting microphone…":isRec?`Recording  ${fmtTime(elapsed)}`:phase==="editing"?"Tap mic to record again":"Tap mic to start"}
-          </p>
-          {isRec&&<p style={{fontSize:12,color:C.dim,marginTop:4}}>Tap to stop when done speaking</p>}
-        </div>
-      </div>
-
-      <VoiceVisualizer active={isRec}/>
-
-      {(phase==="editing"||transcript)&&<textarea autoFocus={phase==="editing"} style={{width:"100%",minHeight:110,background:C.surface,border:`1px solid ${transcript?C.aMid:C.border}`,borderRadius:14,color:transcript?C.text:C.sub,fontSize:14,padding:"14px 16px",resize:"none",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",lineHeight:1.65,transition:"border-color 0.2s"}} placeholder="Tap to type what you ate…" value={transcript} onChange={e=>setTranscript(e.target.value)}/>}
-      {phase==="idle"&&!transcript&&<textarea style={{width:"100%",minHeight:80,background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,color:C.sub,fontSize:14,padding:"14px 16px",resize:"none",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",lineHeight:1.65}} placeholder="Or type your meal here…" value={transcript} onChange={e=>setTranscript(e.target.value)}/>}
-
-      {error&&<p style={{color:C.red,fontSize:13,textAlign:"center",lineHeight:1.5}}>{error}</p>}
-      <button style={{width:"100%",background:C.accent,border:"none",borderRadius:14,color:C.bg,fontSize:15,fontWeight:700,padding:"16px",cursor:"pointer",opacity:transcript.trim()?1:0.3}} onClick={submit} disabled={!transcript.trim()}>Add to Log →</button>
-    </div>
-  </div>;
-}
-
-// ─── Photo screen ─────────────────────────────────────────────────────────────
-function PhotoScreen({apiKey,imageBase64,imagePreview,onBack,onAdd}) {
-  const [phase,setPhase]=useState("idle");
-  const [transcript,setTranscript]=useState("");
-  const [error,setError]=useState("");
-  const [elapsed,setElapsed]=useState(0);
-  const mrRef=useRef(null),chunksRef=useRef([]),timerRef=useRef(null),streamRef=useRef(null);
-
-  const fmtTime=s=>`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
-  const stopAll=()=>{clearInterval(timerRef.current);try{mrRef.current?.stop();}catch{}try{streamRef.current?.getTracks().forEach(t=>t.stop());}catch{}};
-
-  const startRec=async()=>{
-    setPhase("requesting");setError("");setElapsed(0);chunksRef.current=[];
-    try{
-      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+  const start = useCallback(async () => {
+    setPhase("requesting"); setElapsed(0); chunksRef.current=[];
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      setMicPerm(); // remember permission was granted
       streamRef.current=stream;
       const mimeTypes=["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/ogg",""];
       const mimeType=mimeTypes.find(m=>!m||MediaRecorder.isTypeSupported(m))||"";
@@ -469,58 +404,134 @@ function PhotoScreen({apiKey,imageBase64,imagePreview,onBack,onAdd}) {
       mr.ondataavailable=e=>{if(e.data.size>0)chunksRef.current.push(e.data);};
       mr.onstop=async()=>{
         stream.getTracks().forEach(t=>t.stop());
-        const mtype=mr.mimeType||"audio/webm";
-        const blob=new Blob(chunksRef.current,{type:mtype});
-        if(blob.size<1000){setPhase("editing");return;}
+        const blob=new Blob(chunksRef.current,{type:mr.mimeType||"audio/webm"});
+        if(blob.size<1000){setPhase("idle");return;}
         setPhase("transcribing");
-        try{const text=await transcribeAudio(apiKey,blob);setTranscript(text);setPhase("editing");}
-        catch(e){setError(e.message||"Transcription failed");setPhase("editing");}
+        try{const text=await transcribeAudio(apiKey,blob);onTranscript(text);setPhase("done");}
+        catch(e){onTranscript("");setPhase("error");}
       };
-      mr.start(250);mrRef.current=mr;setPhase("recording");
-    }catch(e){setError("Mic access denied. Describe the meal below.");setPhase("editing");}
+      mr.start(250); mrRef.current=mr; setPhase("recording");
+    } catch(e) {
+      setPhase("error");
+    }
+  },[apiKey,onTranscript]);
+
+  const stop = useCallback(() => { try{mrRef.current?.stop();}catch{} },[]);
+
+  useEffect(()=>{
+    if(phase==="recording"){timerRef.current=setInterval(()=>setElapsed(e=>e+1),1000);}
+    else clearInterval(timerRef.current);
+    return()=>clearInterval(timerRef.current);
+  },[phase]);
+
+  return {phase,elapsed,fmtTime,start,stop,stopAll};
+}
+
+// ─── Voice screen ─────────────────────────────────────────────────────────────
+function VoiceScreen({apiKey,onBack,onAdd}) {
+  const [transcript,setTranscript]=useState("");
+  const [error,setError]=useState("");
+  const [submitting,setSubmitting]=useState(false);
+
+  const rec = useRecorder(apiKey, text => { setTranscript(text); });
+
+  // Auto-start recording immediately
+  useEffect(()=>{ rec.start(); return rec.stopAll; },[]);
+
+  const submit = async () => {
+    if(!transcript.trim()) return;
+    rec.stopAll(); setSubmitting(true);
+    try {
+      const r = await analyze(apiKey,null,transcript);
+      const now = new Date();
+      onAdd({id:uid(),mealTitle:r.mealTitle,totalCalories:r.totalCalories,ingredients:r.ingredients||[],summary:r.summary,imageBase64:null,time:now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),addedAt:now.getTime(),emoji:EMOJIS[Math.floor(Math.random()*EMOJIS.length)]});
+    } catch(e) { setError(e.message||"Error — check API key"); setSubmitting(false); }
   };
 
-  const stopRec=()=>{try{mrRef.current?.stop();}catch{}};
+  if(submitting||rec.phase==="transcribing") return <Spinner text={rec.phase==="transcribing"?"Transcribing…":"Calculating calories…"}/>;
 
-  useEffect(()=>{if(phase==="recording"){timerRef.current=setInterval(()=>setElapsed(e=>e+1),1000);}else clearInterval(timerRef.current);return()=>clearInterval(timerRef.current);},[phase]);
-  useEffect(()=>{startRec();return stopAll;},[]);
-
-  const submit=async()=>{
-    if(!transcript.trim())return;
-    setPhase("processing");
-    try{
-      const r=await analyze(apiKey,imageBase64,transcript);
-      const now=new Date();
-      onAdd({id:uid(),mealTitle:r.mealTitle,totalCalories:r.totalCalories,ingredients:r.ingredients||[],summary:r.summary,imageBase64,time:now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),addedAt:now.getTime(),emoji:null});
-    }catch(e){setError(e.message||"Error");setPhase("editing");}
-  };
-
-  if(phase==="transcribing")return <Spinner text="Transcribing your voice…"/>;
-  if(phase==="processing")return <Spinner text="Analyzing with GPT-4o…"/>;
-
-  const isRec=phase==="recording",isReq=phase==="requesting";
+  const isRec=rec.phase==="recording", isReq=rec.phase==="requesting";
 
   return <div style={{height:"100%",background:C.bg,overflowY:"auto",paddingBottom:40}}>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"env(safe-area-inset-top,44px) 16px 12px",paddingTop:`calc(env(safe-area-inset-top,44px) + 12px)`}}>
-      <button style={{width:44,height:44,borderRadius:12,background:C.hover,border:`1px solid ${C.border}`,color:C.text,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>{stopAll();onBack();}}><IcBack/></button>
-      <span style={{fontSize:16,fontWeight:700,color:C.text}}>Describe Your Meal</span>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"env(safe-area-inset-top,44px) 16px 12px",paddingTop:"calc(env(safe-area-inset-top,44px) + 12px)"}}>
+      <button style={{width:44,height:44,borderRadius:12,background:C.hover,border:`1px solid ${C.border}`,color:C.text,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>{rec.stopAll();onBack();}}><IcBack/></button>
+      <span style={{fontSize:16,fontWeight:700,color:C.text}}>Voice Log</span>
       <div style={{width:44}}/>
     </div>
-    <div style={{display:"flex",flexDirection:"column",gap:14,padding:"8px 20px 40px"}}>
-      {imagePreview&&<img src={imagePreview} style={{width:"100%",maxHeight:210,objectFit:"cover",borderRadius:18,border:`1px solid ${C.border}`}} alt=""/>}
-      <div style={{display:"flex",alignItems:"center",gap:14,padding:"10px 0"}}>
-        <div onClick={isRec?stopRec:startRec} style={{width:56,height:56,borderRadius:"50%",flexShrink:0,background:isRec?"rgba(255,68,68,0.12)":"rgba(74,230,138,0.1)",border:`2px solid ${isRec?C.red:isReq?C.border:C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:isReq?"default":"pointer",transition:"all 0.3s"}}>
-          <div style={{color:isRec?C.red:isReq?C.dim:C.accent}}>{isRec?<IcStop/>:<IcMic size={24}/>}</div>
+    <div style={{display:"flex",flexDirection:"column",gap:16,padding:"8px 20px 40px"}}>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,paddingTop:8}}>
+        <div onClick={isRec?rec.stop:rec.start} style={{width:100,height:100,borderRadius:"50%",background:isRec?"rgba(255,68,68,0.12)":isReq?"rgba(255,255,255,0.04)":"rgba(74,230,138,0.1)",border:`2px solid ${isRec?C.red:isReq?C.border:C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:isReq?"default":"pointer",transition:"all 0.3s",boxShadow:isRec?"0 0 0 12px rgba(255,68,68,0.06),0 0 0 24px rgba(255,68,68,0.03)":isReq?"none":"0 0 0 12px rgba(74,230,138,0.06)",animation:isRec?"ripple 1.5s ease-out infinite":"none"}}>
+          <div style={{color:isRec?C.red:isReq?C.dim:C.accent}}>{isRec?<IcStop size={32}/>:<IcMic size={40}/>}</div>
         </div>
-        <div>
-          <p style={{fontSize:14,fontWeight:600,color:isRec?C.red:C.sub}}>{isReq?"Starting mic…":isRec?`Recording  ${fmtTime(elapsed)}`:"Tap to record description"}</p>
-          {isRec&&<p style={{fontSize:11,color:C.dim,marginTop:2}}>Tap stop when done</p>}
+        <div style={{textAlign:"center"}}>
+          <p style={{fontSize:15,fontWeight:600,color:isRec?C.red:isReq?C.dim:C.sub}}>{isReq?"Starting microphone…":isRec?`Recording  ${rec.fmtTime(rec.elapsed)}`:rec.phase==="error"?"Mic blocked — type below":"Tap to start"}</p>
+          {isRec&&<p style={{fontSize:12,color:C.dim,marginTop:4}}>Tap to stop when done speaking</p>}
         </div>
       </div>
       <VoiceVisualizer active={isRec}/>
-      <textarea style={{width:"100%",minHeight:90,background:C.surface,border:`1px solid ${transcript?C.aMid:C.border}`,borderRadius:14,color:transcript?C.text:C.sub,fontSize:14,padding:"14px 16px",resize:"none",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",lineHeight:1.65}} placeholder={"Describe the meal — ingredients, portions…\nOr tap to type."} value={transcript} onChange={e=>setTranscript(e.target.value)}/>
+      <textarea style={{width:"100%",minHeight:110,background:C.surface,border:`1px solid ${transcript?C.aMid:C.border}`,borderRadius:14,color:transcript?C.text:C.sub,fontSize:14,padding:"14px 16px",resize:"none",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",lineHeight:1.65,transition:"border-color 0.2s"}} placeholder="Your words appear here as you speak…&#10;Or tap to type what you ate." value={transcript} onChange={e=>setTranscript(e.target.value)}/>
+      {error&&<p style={{color:C.red,fontSize:13,textAlign:"center",lineHeight:1.5}}>{error}</p>}
+      <button style={{width:"100%",background:C.accent,border:"none",borderRadius:14,color:C.bg,fontSize:15,fontWeight:700,padding:"16px",cursor:"pointer",opacity:transcript.trim()?1:0.3}} onClick={submit} disabled={!transcript.trim()}>Add to Log →</button>
+    </div>
+  </div>;
+}
+
+// ─── Photo screen ─────────────────────────────────────────────────────────────
+// Fix #4: Don't auto-start mic — user must tap mic button
+// Fix #6: Can submit photo without any description
+function PhotoScreen({apiKey,imageBase64,imagePreview,onBack,onAdd}) {
+  const [transcript,setTranscript]=useState("");
+  const [error,setError]=useState("");
+  const [submitting,setSubmitting]=useState(false);
+
+  const rec = useRecorder(apiKey, text => { setTranscript(text); });
+
+  // Cleanup on unmount only — do NOT auto-start
+  useEffect(()=>()=>rec.stopAll(),[]);
+
+  const submit = async () => {
+    rec.stopAll(); setSubmitting(true); setError("");
+    try {
+      const r = await analyze(apiKey, imageBase64, transcript||undefined);
+      const now = new Date();
+      onAdd({id:uid(),mealTitle:r.mealTitle,totalCalories:r.totalCalories,ingredients:r.ingredients||[],summary:r.summary,imageBase64,time:now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),addedAt:now.getTime(),emoji:null});
+    } catch(e) { setError(e.message||"Error"); setSubmitting(false); }
+  };
+
+  if(submitting||rec.phase==="transcribing") return <Spinner text={rec.phase==="transcribing"?"Transcribing…":"Analyzing with GPT-4o…"}/>;
+
+  const isRec=rec.phase==="recording", isReq=rec.phase==="requesting";
+
+  return <div style={{height:"100%",background:C.bg,overflowY:"auto",paddingBottom:40}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"env(safe-area-inset-top,44px) 16px 12px",paddingTop:"calc(env(safe-area-inset-top,44px) + 12px)"}}>
+      <button style={{width:44,height:44,borderRadius:12,background:C.hover,border:`1px solid ${C.border}`,color:C.text,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>{rec.stopAll();onBack();}}><IcBack/></button>
+      <span style={{fontSize:16,fontWeight:700,color:C.text}}>Add Meal Photo</span>
+      <div style={{width:44}}/>
+    </div>
+    <div style={{display:"flex",flexDirection:"column",gap:14,padding:"4px 20px 40px"}}>
+      {imagePreview&&<img src={imagePreview} style={{width:"100%",maxHeight:240,objectFit:"cover",borderRadius:18,border:`1px solid ${C.border}`}} alt=""/>}
+
+      {/* Optional mic row — user taps to start, not auto */}
+      <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:C.surface,borderRadius:14,border:`1px solid ${C.border}`}}>
+        <div onClick={isRec?rec.stop:rec.start} style={{width:48,height:48,borderRadius:"50%",flexShrink:0,background:isRec?"rgba(255,68,68,0.12)":isReq?"rgba(255,255,255,0.04)":"rgba(74,230,138,0.1)",border:`2px solid ${isRec?C.red:isReq?C.border:C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:isReq?"default":"pointer",transition:"all 0.3s"}}>
+          <div style={{color:isRec?C.red:isReq?C.dim:C.accent}}>{isRec?<IcStop size={16}/>:<IcMic size={20}/>}</div>
+        </div>
+        <div style={{flex:1}}>
+          <p style={{fontSize:13,fontWeight:600,color:isRec?C.red:C.sub}}>{isReq?"Starting…":isRec?`Recording ${rec.fmtTime(rec.elapsed)}`:"Tap mic to describe (optional)"}</p>
+          {isRec&&<p style={{fontSize:10,color:C.dim,marginTop:1}}>Tap to stop</p>}
+        </div>
+      </div>
+
+      {(isRec||rec.phase==="done"||rec.phase==="error"||transcript)&&<VoiceVisualizer active={isRec}/>}
+
+      <textarea style={{width:"100%",minHeight:80,background:C.surface,border:`1px solid ${transcript?C.aMid:C.border}`,borderRadius:14,color:transcript?C.text:C.sub,fontSize:14,padding:"14px 16px",resize:"none",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",lineHeight:1.65}} placeholder={"Add details (optional)\nIngredients, portions, or tap to skip"} value={transcript} onChange={e=>setTranscript(e.target.value)}/>
+
       {error&&<p style={{color:C.red,fontSize:13,textAlign:"center"}}>{error}</p>}
-      <button style={{width:"100%",background:C.accent,border:"none",borderRadius:14,color:C.bg,fontSize:15,fontWeight:700,padding:"16px",cursor:"pointer",opacity:transcript.trim()?1:0.35}} onClick={submit} disabled={!transcript.trim()}>Analyze & Add →</button>
+
+      {/* Always enabled — description is optional */}
+      <button style={{width:"100%",background:C.accent,border:"none",borderRadius:14,color:C.bg,fontSize:15,fontWeight:700,padding:"16px",cursor:"pointer"}} onClick={submit}>
+        Analyze & Add →
+      </button>
     </div>
   </div>;
 }
@@ -532,32 +543,34 @@ function DetailScreen({meal,onBack,onUpdate,onDelete}) {
   const [totalVal,setTotalVal]=useState(String(meal.totalCalories));
   const [editIdx,setEditIdx]=useState(null);
   const [ingVal,setIngVal]=useState("");
+  const isWorkout=meal.type==="workout";
 
   const commitTotal=()=>{const n=parseInt(totalVal);if(!isNaN(n)&&n>=0)onUpdate({...meal,totalCalories:n,ingredients:ings});else setTotalVal(String(meal.totalCalories));setEditTotal(false);};
   const commitIng=idx=>{const n=parseInt(ingVal);if(!isNaN(n)&&n>=0){const next=ings.map((x,i)=>i===idx?{...x,calories:n}:x);setIngs(next);const tot=next.reduce((s,x)=>s+x.calories,0);setTotalVal(String(tot));onUpdate({...meal,totalCalories:tot,ingredients:next});}setEditIdx(null);};
 
   return <div style={{height:"100%",background:C.bg,overflowY:"auto",paddingBottom:48}}>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"env(safe-area-inset-top,44px) 16px 12px",paddingTop:`calc(env(safe-area-inset-top,44px) + 12px)`}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"env(safe-area-inset-top,44px) 16px 12px",paddingTop:"calc(env(safe-area-inset-top,44px) + 12px)"}}>
       <button style={{width:44,height:44,borderRadius:12,background:C.hover,border:`1px solid ${C.border}`,color:C.text,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={onBack}><IcBack/></button>
-      <span style={{fontSize:16,fontWeight:700,color:C.text}}>Meal Details</span>
+      <span style={{fontSize:16,fontWeight:700,color:C.text}}>{isWorkout?"Workout":"Meal Details"}</span>
       <button style={{width:44,height:44,borderRadius:12,background:C.rDim,border:`1px solid ${C.rMid}`,color:C.red,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>onDelete(meal.id)}><IcTrash/></button>
     </div>
-    {meal.imageBase64
+    {!isWorkout&&(meal.imageBase64
       ?<img src={`data:image/jpeg;base64,${meal.imageBase64}`} style={{width:"100%",height:250,objectFit:"cover"}} alt=""/>
       :<div style={{width:"100%",height:180,background:C.surface,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:56}}>{meal.emoji||"🍽️"}</span></div>
-    }
+    )}
+    {isWorkout&&<div style={{width:"100%",height:140,background:C.oDim,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:64}}>🔥</span></div>}
     <div style={{padding:"20px 20px 40px"}}>
-      <h2 style={{fontSize:22,fontWeight:800,color:C.text,marginBottom:6,letterSpacing:"-0.5px"}}>{meal.mealTitle}</h2>
+      <h2 style={{fontSize:22,fontWeight:800,color:isWorkout?C.orange:C.text,marginBottom:6,letterSpacing:"-0.5px"}}>{meal.mealTitle}</h2>
       <p style={{fontSize:13,color:C.sub,lineHeight:1.6,marginBottom:5}}>{meal.summary}</p>
       <p style={{fontSize:11,color:C.dim,marginBottom:20}}>{meal.time}</p>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 18px",background:C.aDim,border:`1px solid ${C.aMid}`,borderRadius:16,marginBottom:18,cursor:"pointer"}} onClick={()=>{setTotalVal(String(meal.totalCalories));setEditTotal(true);}}>
-        <span style={{fontSize:14,fontWeight:700,color:C.text}}>Total Calories</span>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 18px",background:isWorkout?C.oDim:C.aDim,border:`1px solid ${isWorkout?C.oMid:C.aMid}`,borderRadius:16,marginBottom:18,cursor:"pointer"}} onClick={()=>{setTotalVal(String(meal.totalCalories));setEditTotal(true);}}>
+        <span style={{fontSize:14,fontWeight:700,color:C.text}}>{isWorkout?"Calories Burned":"Total Calories"}</span>
         {editTotal
-          ?<input autoFocus style={{width:80,background:"transparent",border:"none",borderBottom:`2px solid ${C.accent}`,color:C.accent,fontSize:28,fontWeight:800,fontFamily:"'Plus Jakarta Sans',sans-serif",outline:"none",textAlign:"right"}} value={totalVal} onChange={e=>setTotalVal(e.target.value)} onBlur={commitTotal} onKeyDown={e=>e.key==="Enter"&&commitTotal()} onClick={e=>e.stopPropagation()}/>
-          :<div style={{display:"flex",alignItems:"center",gap:6,color:C.accent}}><span style={{fontSize:28,fontWeight:800,letterSpacing:"-1px"}}>{meal.totalCalories}</span><span style={{fontSize:12,opacity:0.7}}>kcal</span><IcEdit size={14}/></div>
+          ?<input autoFocus style={{width:80,background:"transparent",border:"none",borderBottom:`2px solid ${isWorkout?C.orange:C.accent}`,color:isWorkout?C.orange:C.accent,fontSize:28,fontWeight:800,fontFamily:"'Plus Jakarta Sans',sans-serif",outline:"none",textAlign:"right"}} value={totalVal} onChange={e=>setTotalVal(e.target.value)} onBlur={commitTotal} onKeyDown={e=>e.key==="Enter"&&commitTotal()} onClick={e=>e.stopPropagation()}/>
+          :<div style={{display:"flex",alignItems:"center",gap:6,color:isWorkout?C.orange:C.accent}}><span style={{fontSize:28,fontWeight:800,letterSpacing:"-1px"}}>{meal.totalCalories}</span><span style={{fontSize:12,opacity:0.7}}>kcal</span><IcEdit size={14}/></div>
         }
       </div>
-      {ings.length>0&&<div style={{background:C.surface,borderRadius:16,border:`1px solid ${C.border}`,overflow:"hidden"}}>
+      {!isWorkout&&ings.length>0&&<div style={{background:C.surface,borderRadius:16,border:`1px solid ${C.border}`,overflow:"hidden"}}>
         <p style={{fontSize:11,fontWeight:700,color:C.sub,textTransform:"uppercase",letterSpacing:"1px",padding:"12px 16px 8px"}}>Breakdown</p>
         {ings.map((ing,idx)=><div key={idx} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 16px",borderTop:`1px solid ${C.border}`}}>
           <span style={{fontSize:14,color:C.text,flex:1}}>{ing.name}</span>
@@ -576,23 +589,57 @@ function App() {
   const [apiKey,setApiKey]=useState(()=>loadKey());
   const [screen,setScreen]=useState("home");
   const [date,setDate]=useState(new Date());
-  const [meals,setMeals]=useState(()=>loadMeals(fmtKey(new Date())));
+  const [baseGoal,setBaseGoal]=useState(()=>loadBaseGoal());
   const [goal,setGoal]=useState(()=>loadGoal());
   const [selected,setSelected]=useState(null);
   const [camImg,setCamImg]=useState({b64:null,preview:null});
 
-  useEffect(()=>{setMeals(loadMeals(fmtKey(date)));},[date]);
-  useEffect(()=>{saveMeals(fmtKey(date),meals);},[meals]);
+  // FIX #1: Use a ref to track whether we're currently saving vs loading
+  // Load meals fresh when date changes
+  const [meals,setMeals]=useState(()=>loadMeals(fmtKey(new Date())));
+  const dateRef = useRef(fmtKey(new Date()));
+  const savingRef = useRef(false);
+
+  useEffect(()=>{
+    const key = fmtKey(date);
+    dateRef.current = key;
+    setMeals(loadMeals(key));
+  },[date]);
+
+  // Save meals — but only save to the current date key
+  useEffect(()=>{
+    saveMeals(dateRef.current, meals);
+  },[meals]);
+
+  // Recalculate effective goal whenever meals change (to add burned calories)
+  useEffect(()=>{
+    const burned = meals.filter(m=>m.type==="workout").reduce((s,m)=>s+m.totalCalories,0);
+    const effective = baseGoal + burned;
+    setGoal(effective);
+    saveGoal(effective);
+  },[meals,baseGoal]);
 
   const addMeal=m=>{setMeals(p=>[...p,m]);setScreen("home");};
+  const addWorkout=w=>{setMeals(p=>[...p,w]);};
   const updateMeal=m=>{setMeals(p=>p.map(x=>x.id===m.id?m:x));setSelected(m);};
   const deleteMeal=id=>{setMeals(p=>p.filter(x=>x.id!==id));setScreen("home");};
-  const selectMeal=m=>{if(m._quickEdit){setMeals(p=>p.map(x=>x.id===m.id?{...x,totalCalories:m._newCal}:x));return;}setSelected(m);setScreen("detail");};
+  const selectMeal=m=>{
+    if(m._quickEdit){setMeals(p=>p.map(x=>x.id===m.id?{...x,totalCalories:m._newCal}:x));return;}
+    setSelected(m);setScreen("detail");
+  };
 
   if(!apiKey)return <ApiKeyScreen onSave={k=>{saveKey(k);setApiKey(k);}}/>;
 
   return <div style={{height:"100%"}}>
-    {screen==="home"&&<HomeScreen onOpenCamera={(b64,preview)=>{setCamImg({b64,preview});setScreen("camera");}} onOpenVoice={()=>setScreen("voice")} onSelectMeal={selectMeal} meals={meals} goal={goal} setGoal={g=>{setGoal(g);saveGoal(g);}} date={date} setDate={setDate}/>}
+    {screen==="home"&&<HomeScreen
+      onOpenCamera={(b64,preview)=>{setCamImg({b64,preview});setScreen("camera");}}
+      onOpenVoice={()=>setScreen("voice")}
+      onAddWorkout={addWorkout}
+      onSelectMeal={selectMeal}
+      meals={meals} goal={goal} baseGoal={baseGoal}
+      setGoal={setGoal} setBaseGoal={setBaseGoal}
+      date={date} setDate={setDate}
+    />}
     {screen==="camera"&&<PhotoScreen apiKey={apiKey} imageBase64={camImg.b64} imagePreview={camImg.preview} onBack={()=>setScreen("home")} onAdd={addMeal}/>}
     {screen==="voice"&&<VoiceScreen apiKey={apiKey} onBack={()=>setScreen("home")} onAdd={addMeal}/>}
     {screen==="detail"&&selected&&<DetailScreen meal={selected} onBack={()=>setScreen("home")} onUpdate={updateMeal} onDelete={deleteMeal}/>}

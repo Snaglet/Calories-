@@ -798,27 +798,25 @@ function App() {
   const [selected,setSelected]=useState(null);
   const [camImg,setCamImg]=useState({b64:null,preview:null});
 
-  // FIX: Use a ref flag to skip saving during a date-change load
   const [meals,setMeals]=useState(()=>loadMeals(fmtKey(new Date())));
   const dateRef = useRef(fmtKey(new Date()));
-  const isLoadingRef = useRef(false);
+  const mealsRef = useRef(meals); // always holds current meals, no stale closure
 
+  // Keep mealsRef in sync with meals state
+  useEffect(()=>{ mealsRef.current = meals; },[meals]);
+
+  // When date changes: save current meals using mealsRef (never stale), then load new date
   useEffect(()=>{
-    const key = fmtKey(date);
-    isLoadingRef.current = true; // mark: we are loading, don't save
-    dateRef.current = key;
-    setMeals(loadMeals(key));
-    // Use a microtask so the flag clears after React has processed the setState
-    Promise.resolve().then(()=>{ isLoadingRef.current = false; });
+    const newKey = fmtKey(date);
+    if(newKey === dateRef.current) return;
+    saveMeals(dateRef.current, mealsRef.current); // save current day before switching
+    dateRef.current = newKey;
+    const loaded = loadMeals(newKey);
+    mealsRef.current = loaded;
+    setMeals(loaded);
   },[date]);
 
-  // Save meals — skip if we're in the middle of a date-load
-  useEffect(()=>{
-    if(isLoadingRef.current) return;
-    saveMeals(dateRef.current, meals);
-  },[meals]);
-
-  // Recalculate effective goal whenever meals change (to add burned calories)
+  // Recalculate effective goal whenever meals change
   useEffect(()=>{
     const burned = meals.filter(m=>m.type==="workout").reduce((s,m)=>s+m.totalCalories,0);
     const effective = baseGoal + burned;
@@ -827,21 +825,32 @@ function App() {
   },[meals,baseGoal]);
 
   const addMeal=m=>{
-    recordFoodItems(m.ingredients); // save ingredients to history
-    setMeals(p=>[...p,m]);
+    recordFoodItems(m.ingredients);
+    setMeals(p=>{ const next=[...p,m]; mealsRef.current=next; saveMeals(dateRef.current,next); return next; });
     setScreen("home");
   };
-  const addWorkout=w=>{setMeals(p=>[...p,w]);};
+  const addWorkout=w=>{
+    setMeals(p=>{ const next=[...p,w]; mealsRef.current=next; saveMeals(dateRef.current,next); return next; });
+  };
   const updateMeal=m=>{
     recordFoodItems(m.ingredients);
-    setMeals(p=>p.map(x=>x.id===m.id?m:x));
+    setMeals(p=>{ const next=p.map(x=>x.id===m.id?m:x); mealsRef.current=next; saveMeals(dateRef.current,next); return next; });
     setSelected(m);
   };
-  const deleteMeal=id=>{setMeals(p=>p.filter(x=>x.id!==id));setScreen("home");};
+  const deleteMeal=id=>{
+    setMeals(p=>{ const next=p.filter(x=>x.id!==id); mealsRef.current=next; saveMeals(dateRef.current,next); return next; });
+    setScreen("home");
+  };
   const selectMeal=m=>{
-    if(m._quickEdit){setMeals(p=>p.map(x=>x.id===m.id?{...x,totalCalories:m._newCal}:x));return;}
-    if(m._delete){setMeals(p=>p.filter(x=>x.id!==m.id));return;}
-    setSelected(m);setScreen("detail");
+    if(m._quickEdit){
+      setMeals(p=>{ const next=p.map(x=>x.id===m.id?{...x,totalCalories:m._newCal}:x); mealsRef.current=next; saveMeals(dateRef.current,next); return next; });
+      return;
+    }
+    if(m._delete){
+      setMeals(p=>{ const next=p.filter(x=>x.id!==m.id); mealsRef.current=next; saveMeals(dateRef.current,next); return next; });
+      return;
+    }
+    setSelected(m); setScreen("detail");
   };
 
   if(!apiKey)return <ApiKeyScreen onSave={k=>{saveKey(k);setApiKey(k);}}/>;

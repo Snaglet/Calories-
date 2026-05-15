@@ -63,14 +63,36 @@ const isToday = d => fmtKey(d) === fmtKey(new Date());
 async function analyze(apiKey, imageBase64, description) {
   const content = [];
   if (imageBase64) content.push({type:"image_url",image_url:{url:`data:image/jpeg;base64,${imageBase64}`,detail:"high"}});
-  const prompt = imageBase64
-    ? `Analyze this meal photo${description ? ` and this description: "${description}"` : ""}. Return ONLY valid JSON, no markdown:\n{"mealTitle":"...","totalCalories":0,"ingredients":[{"name":"...","calories":0}],"summary":"..."}`
-    : `User described: "${description}". Estimate calories. Return ONLY valid JSON, no markdown:\n{"mealTitle":"...","totalCalories":0,"ingredients":[{"name":"...","calories":0}],"summary":"..."}`;
-  content.push({type:"text",text:prompt});
+
+  const sysPrompt = `You are a precise nutrition expert. Your job is to estimate calories as accurately as possible using USDA data, restaurant/brand published nutrition facts, and food label knowledge.
+
+CRITICAL RULES:
+- If the user describes a quantity (e.g. "two slim jims", "3 eggs", "large portion"), you MUST multiply the per-unit calories by that quantity. Never return single-serving calories when the user said they ate multiple.
+- If you see a barcode or food package, identify the brand and product from visible text/logo and use the REAL published nutrition facts for that exact product — do not guess.
+- Use REAL brand calories, not generic estimates. Examples: Bubba Burger original = 420 cal. Slim Jim Original = 80 cal each. Big Mac = 550 cal. Whopper = 660 cal.
+- If a photo shows a plate of food, estimate the ACTUAL portion size visible, not a default serving size.
+- Never return 0 calories for any real food item.
+- Sum all ingredients to get totalCalories — never return a total less than the sum of parts.
+- Return ONLY valid JSON, no markdown fences.`;
+
+  const userPrompt = imageBase64
+    ? `Analyze this meal${description ? ` and the user says: "${description}"` : ""}. If the user mentioned a quantity, multiply calories accordingly. Return JSON:\n{"mealTitle":"...","totalCalories":0,"ingredients":[{"name":"...","calories":0}],"summary":"..."}`
+    : `The user described their meal: "${description}". If they mentioned a quantity (like "two" or "3"), multiply the per-unit calories by that number. Use real brand/USDA calorie data. Return JSON:\n{"mealTitle":"...","totalCalories":0,"ingredients":[{"name":"...","calories":0}],"summary":"..."}`;
+
+  content.push({type:"text",text:userPrompt});
+
   const res = await fetch("https://api.openai.com/v1/chat/completions",{
     method:"POST",
     headers:{"Content-Type":"application/json","Authorization":`Bearer ${apiKey}`},
-    body:JSON.stringify({model:"gpt-4o",messages:[{role:"user",content}],max_tokens:600,temperature:0.3})
+    body:JSON.stringify({
+      model:"gpt-4o",
+      messages:[
+        {role:"system",content:sysPrompt},
+        {role:"user",content}
+      ],
+      max_tokens:600,
+      temperature:0.1  // lower temp = more consistent, less hallucination
+    })
   });
   if(!res.ok){const e=await res.json();throw new Error(e.error?.message||"OpenAI error");}
   const data = await res.json();

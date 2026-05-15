@@ -181,7 +181,20 @@ function WeightSparkline({data}) {
   </svg>;
 }
 
-// ─── Meal card with swipe-to-delete ──────────────────────────────────────────
+// ─── Food item history for autocomplete ──────────────────────────────────────
+const loadFoodHistory = () => { try { return JSON.parse(ls.get("jct:foodhist") || "[]"); } catch { return []; } };
+const saveFoodHistory = arr => ls.set("jct:foodhist", JSON.stringify(arr));
+
+// When a meal is added, save each ingredient to history
+function recordFoodItems(ingredients) {
+  if(!ingredients||!ingredients.length) return;
+  const existing = loadFoodHistory();
+  // Merge: update calorie value if name matches, otherwise add new
+  const map = {};
+  existing.forEach(f => { map[f.name.toLowerCase()] = f; });
+  ingredients.forEach(f => { map[f.name.toLowerCase()] = {name:f.name, calories:f.calories}; });
+  saveFoodHistory(Object.values(map).slice(0,100));
+}
 function MealCard({meal,onTap,onQuickEdit,onDelete}) {
   const [editing,setEditing]=useState(false);
   const [val,setVal]=useState(String(meal.totalCalories));
@@ -202,24 +215,24 @@ function MealCard({meal,onTap,onQuickEdit,onDelete}) {
   const onTouchMove=e=>{
     const dx=e.touches[0].clientX-touchStartX.current;
     const dy=Math.abs(e.touches[0].clientY-touchStartY.current);
-    if(dy>20&&Math.abs(dx)<20) return; // vertical scroll, ignore
-    if(dx>0){ // only swipe right to delete
+    if(dy>20&&Math.abs(dx)<20) return;
+    if(dx<0){ // swipe LEFT to delete
       setSwiping(true);
-      setSwipeX(Math.min(dx,THRESHOLD+30));
+      setSwipeX(Math.max(dx,-(THRESHOLD+30)));
     }
   };
   const onTouchEnd=()=>{
-    if(swipeX>=THRESHOLD){ onDelete(meal.id); }
+    if(swipeX<=-THRESHOLD){ onDelete(meal.id); }
     else { setSwipeX(0); setSwiping(false); }
   };
 
   return <div style={{position:"relative",marginBottom:10,borderRadius:16,overflow:"hidden"}}>
-    {/* Delete background revealed by swipe */}
-    <div style={{position:"absolute",inset:0,background:C.red,borderRadius:16,display:"flex",alignItems:"center",paddingLeft:20}}>
+    {/* Delete background — right side, revealed by swiping left */}
+    <div style={{position:"absolute",inset:0,background:C.red,borderRadius:16,display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:20}}>
+      <span style={{color:"#fff",fontSize:13,fontWeight:700,marginRight:6}}>Delete</span>
       <IcTrash/>
-      <span style={{color:"#fff",fontSize:13,fontWeight:700,marginLeft:6}}>Delete</span>
     </div>
-    {/* Card — translates right on swipe */}
+    {/* Card — translates left on swipe */}
     <div
       style={{display:"flex",alignItems:"center",gap:12,background:C.card,border:`1px solid ${isWorkout?C.oMid:C.border}`,borderRadius:16,padding:"12px 14px",cursor:"pointer",animation:swiping?"none":"fadeUp 0.25s ease",transform:`translateX(${swipeX}px)`,transition:swiping?"none":"transform 0.3s ease"}}
       onClick={()=>{if(!editing&&swipeX===0)onTap(meal);}}
@@ -522,11 +535,34 @@ function VoiceScreen({apiKey,onBack,onAdd}) {
   const [transcript,setTranscript]=useState("");
   const [error,setError]=useState("");
   const [submitting,setSubmitting]=useState(false);
+  const [foodSugg,setFoodSugg]=useState([]);
+  const [showFoodSugg,setShowFoodSugg]=useState(false);
+  const foodHistory = useRef(loadFoodHistory());
 
   const rec = useRecorder(apiKey, text => { setTranscript(text); });
-
-  // Auto-start recording immediately
   useEffect(()=>{ rec.start(); return rec.stopAll; },[]);
+
+  const handleTranscriptChange = (val) => {
+    setTranscript(val);
+    // Check last word typed for food history matches
+    const words = val.split(/[\s,]+/);
+    const lastWord = words[words.length-1].trim();
+    if(lastWord.length>=2){
+      const matches = foodHistory.current.filter(f=>f.name.toLowerCase().includes(lastWord.toLowerCase())).slice(0,4);
+      setFoodSugg(matches);
+      setShowFoodSugg(matches.length>0);
+    } else {
+      setShowFoodSugg(false);
+    }
+  };
+
+  const pickFood = (food) => {
+    // Append the food name to transcript
+    const words = transcript.split(/[\s,]+/);
+    words[words.length-1] = food.name;
+    setTranscript(words.join(" ") + ` (${food.calories} cal)`);
+    setShowFoodSugg(false);
+  };
 
   const submit = async () => {
     if(!transcript.trim()) return;
@@ -559,7 +595,23 @@ function VoiceScreen({apiKey,onBack,onAdd}) {
         </div>
       </div>
       <VoiceVisualizer active={isRec}/>
-      <textarea style={{width:"100%",minHeight:110,background:C.surface,border:`1px solid ${transcript?C.aMid:C.border}`,borderRadius:14,color:transcript?C.text:C.sub,fontSize:14,padding:"14px 16px",resize:"none",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",lineHeight:1.65,transition:"border-color 0.2s"}} placeholder="Your words appear here as you speak…&#10;Or tap to type what you ate." value={transcript} onChange={e=>setTranscript(e.target.value)}/>
+
+      {/* Transcript with food history suggestions */}
+      <div style={{position:"relative"}}>
+        <textarea style={{width:"100%",minHeight:110,background:C.surface,border:`1px solid ${transcript?C.aMid:C.border}`,borderRadius:14,color:transcript?C.text:C.sub,fontSize:14,padding:"14px 16px",resize:"none",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",lineHeight:1.65,transition:"border-color 0.2s"}} placeholder="Your words appear here as you speak…&#10;Or tap to type what you ate." value={transcript} onChange={e=>handleTranscriptChange(e.target.value)} onBlur={()=>setTimeout(()=>setShowFoodSugg(false),150)}/>
+        {showFoodSugg&&<div style={{position:"absolute",bottom:"100%",left:0,right:0,background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden",marginBottom:4,zIndex:10}}>
+          <p style={{fontSize:10,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.8px",padding:"8px 14px 4px"}}>Previously logged</p>
+          {foodSugg.map((f,i)=>(
+            <div key={i} onMouseDown={()=>pickFood(f)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderTop:`1px solid ${C.border}`,cursor:"pointer",background:"transparent"}}
+              onMouseEnter={e=>e.currentTarget.style.background=C.hover}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              <span style={{fontSize:14,color:C.text}}>{f.name}</span>
+              <span style={{fontSize:13,fontWeight:700,color:C.accent}}>{f.calories} cal</span>
+            </div>
+          ))}
+        </div>}
+      </div>
+
       {error&&<p style={{color:C.red,fontSize:13,textAlign:"center",lineHeight:1.5}}>{error}</p>}
       <button style={{width:"100%",background:C.accent,border:"none",borderRadius:14,color:C.bg,fontSize:15,fontWeight:700,padding:"16px",cursor:"pointer",opacity:transcript.trim()?1:0.3}} onClick={submit} disabled={!transcript.trim()}>Add to Log →</button>
     </div>
@@ -645,15 +697,15 @@ function SwipeIngRow({ing,idx,editIdx,ingVal,setIngVal,setEditIdx,commitIng,onDe
     const dx=e.touches[0].clientX-tx.current;
     const dy=Math.abs(e.touches[0].clientY-ty.current);
     if(dy>20&&Math.abs(dx)<20)return;
-    if(dx>0){setSwiping(true);setSwipeX(Math.min(dx,THRESHOLD+20));}
+    if(dx<0){setSwiping(true);setSwipeX(Math.max(dx,-(THRESHOLD+20)));}
   };
   const onTE=()=>{
-    if(swipeX>=THRESHOLD)onDelete(idx);
+    if(swipeX<=-THRESHOLD)onDelete(idx);
     else{setSwipeX(0);setSwiping(false);}
   };
   return <div style={{position:"relative",overflow:"hidden",borderTop:`1px solid ${C.border}`}}>
-    <div style={{position:"absolute",inset:0,background:C.red,display:"flex",alignItems:"center",paddingLeft:16}}>
-      <IcTrash/><span style={{color:"#fff",fontSize:12,fontWeight:700,marginLeft:4}}>Delete</span>
+    <div style={{position:"absolute",inset:0,background:C.red,display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:16}}>
+      <span style={{color:"#fff",fontSize:12,fontWeight:700,marginRight:4}}>Delete</span><IcTrash/>
     </div>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 16px",background:C.surface,transform:`translateX(${swipeX}px)`,transition:swiping?"none":"transform 0.3s ease"}}
       onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
@@ -724,20 +776,23 @@ function App() {
   const [selected,setSelected]=useState(null);
   const [camImg,setCamImg]=useState({b64:null,preview:null});
 
-  // FIX #1: Use a ref to track whether we're currently saving vs loading
-  // Load meals fresh when date changes
+  // FIX: Use a ref flag to skip saving during a date-change load
   const [meals,setMeals]=useState(()=>loadMeals(fmtKey(new Date())));
   const dateRef = useRef(fmtKey(new Date()));
-  const savingRef = useRef(false);
+  const isLoadingRef = useRef(false);
 
   useEffect(()=>{
     const key = fmtKey(date);
+    isLoadingRef.current = true; // mark: we are loading, don't save
     dateRef.current = key;
     setMeals(loadMeals(key));
+    // Use a microtask so the flag clears after React has processed the setState
+    Promise.resolve().then(()=>{ isLoadingRef.current = false; });
   },[date]);
 
-  // Save meals — but only save to the current date key
+  // Save meals — skip if we're in the middle of a date-load
   useEffect(()=>{
+    if(isLoadingRef.current) return;
     saveMeals(dateRef.current, meals);
   },[meals]);
 
@@ -749,9 +804,17 @@ function App() {
     saveGoal(effective);
   },[meals,baseGoal]);
 
-  const addMeal=m=>{setMeals(p=>[...p,m]);setScreen("home");};
+  const addMeal=m=>{
+    recordFoodItems(m.ingredients); // save ingredients to history
+    setMeals(p=>[...p,m]);
+    setScreen("home");
+  };
   const addWorkout=w=>{setMeals(p=>[...p,w]);};
-  const updateMeal=m=>{setMeals(p=>p.map(x=>x.id===m.id?m:x));setSelected(m);};
+  const updateMeal=m=>{
+    recordFoodItems(m.ingredients);
+    setMeals(p=>p.map(x=>x.id===m.id?m:x));
+    setSelected(m);
+  };
   const deleteMeal=id=>{setMeals(p=>p.filter(x=>x.id!==id));setScreen("home");};
   const selectMeal=m=>{
     if(m._quickEdit){setMeals(p=>p.map(x=>x.id===m.id?{...x,totalCalories:m._newCal}:x));return;}

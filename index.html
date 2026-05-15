@@ -73,11 +73,12 @@ CRITICAL RULES:
 - If a photo shows a plate of food, estimate the ACTUAL portion size visible, not a default serving size.
 - Never return 0 calories for any real food item.
 - Sum all ingredients to get totalCalories — never return a total less than the sum of parts.
+- Also estimate totalProteinG and proteinG per ingredient using USDA/brand data. Examples: chicken breast 4oz = 35g protein. Egg = 6g. Bubba Burger = 20g. Slim Jim Original = 6g each.
 - Return ONLY valid JSON, no markdown fences.`;
 
   const userPrompt = imageBase64
-    ? `Analyze this meal${description ? ` and the user says: "${description}"` : ""}. If the user mentioned a quantity, multiply calories accordingly. Return JSON:\n{"mealTitle":"...","totalCalories":0,"ingredients":[{"name":"...","calories":0}],"summary":"..."}`
-    : `The user described their meal: "${description}". If they mentioned a quantity (like "two" or "3"), multiply the per-unit calories by that number. Use real brand/USDA calorie data. Return JSON:\n{"mealTitle":"...","totalCalories":0,"ingredients":[{"name":"...","calories":0}],"summary":"..."}`;
+    ? `Analyze this meal${description ? ` and the user says: "${description}"` : ""}. If the user mentioned a quantity, multiply calories and protein accordingly. Return JSON:\n{"mealTitle":"...","totalCalories":0,"totalProteinG":0,"ingredients":[{"name":"...","calories":0,"proteinG":0}],"summary":"..."}`
+    : `The user described their meal: "${description}". If they mentioned a quantity (like "two" or "3"), multiply the per-unit calories and protein by that number. Use real brand/USDA calorie and protein data. Return JSON:\n{"mealTitle":"...","totalCalories":0,"totalProteinG":0,"ingredients":[{"name":"...","calories":0,"proteinG":0}],"summary":"..."}`;
 
   content.push({type:"text",text:userPrompt});
 
@@ -211,10 +212,9 @@ const saveFoodHistory = arr => ls.set("jct:foodhist", JSON.stringify(arr));
 function recordFoodItems(ingredients) {
   if(!ingredients||!ingredients.length) return;
   const existing = loadFoodHistory();
-  // Merge: update calorie value if name matches, otherwise add new
   const map = {};
   existing.forEach(f => { map[f.name.toLowerCase()] = f; });
-  ingredients.forEach(f => { map[f.name.toLowerCase()] = {name:f.name, calories:f.calories}; });
+  ingredients.forEach(f => { map[f.name.toLowerCase()] = {name:f.name, calories:f.calories, proteinG:f.proteinG||0}; });
   saveFoodHistory(Object.values(map).slice(0,100));
 }
 function MealCard({meal,onTap,onQuickEdit,onDelete}) {
@@ -401,6 +401,7 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,meals,go
   // Meals are foods only; workouts are separate type
   const eaten = meals.filter(m=>m.type!=="workout").reduce((s,m)=>s+m.totalCalories,0);
   const burned = meals.filter(m=>m.type==="workout").reduce((s,m)=>s+m.totalCalories,0);
+  const protein = meals.filter(m=>m.type!=="workout").reduce((s,m)=>s+(m.totalProteinG||0),0);
   const latestW=weightLog.length>0?weightLog[weightLog.length-1].value:0;
 
   const commitGoal=()=>{
@@ -461,6 +462,11 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,meals,go
         <span style={{fontSize:9,color:C.dim,fontWeight:500,marginTop:1}}>
           {editGoal?"enter base goal + return":burned>0?`${baseGoal} + ${burned} burned`:"calories eaten / goal"}
         </span>
+        {/* Protein row */}
+        <div style={{marginTop:6,paddingTop:6,borderTop:`1px solid ${C.border}`,display:"flex",alignItems:"baseline",gap:4}}>
+          <span style={{fontSize:18,fontWeight:800,color:"#60C8F5",letterSpacing:"-0.5px",lineHeight:1}}>{protein}g</span>
+          <span style={{fontSize:9,color:C.dim,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.5px"}}>protein</span>
+        </div>
       </div>
       <div style={{flex:1,display:"flex",flexDirection:"column",gap:3,padding:"16px 18px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:18}}>
         <span style={{fontSize:9,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:2}}>Weight</span>
@@ -635,7 +641,12 @@ function VoiceScreen({apiKey,onBack,onAdd}) {
       </div>
 
       {error&&<p style={{color:C.red,fontSize:13,textAlign:"center",lineHeight:1.5}}>{error}</p>}
-      <button style={{width:"100%",background:C.accent,border:"none",borderRadius:14,color:C.bg,fontSize:15,fontWeight:700,padding:"16px",cursor:"pointer",opacity:transcript.trim()?1:0.3}} onClick={submit} disabled={!transcript.trim()}>Add to Log →</button>
+      <div style={{display:"flex",gap:10}}>
+        {isRec&&<button style={{flexShrink:0,background:C.rDim,border:`2px solid ${C.red}`,borderRadius:14,color:C.red,fontSize:13,fontWeight:700,padding:"16px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}} onClick={rec.stop}>
+          <IcStop size={14}/> Stop
+        </button>}
+        <button style={{flex:1,background:C.accent,border:"none",borderRadius:14,color:C.bg,fontSize:15,fontWeight:700,padding:"16px",cursor:"pointer",opacity:transcript.trim()?1:0.3}} onClick={submit} disabled={!transcript.trim()}>Add to Log →</button>
+      </div>
     </div>
   </div>;
 }
@@ -734,7 +745,7 @@ function SwipeIngRow({ing,idx,editIdx,ingVal,setIngVal,setEditIdx,commitIng,onDe
       <span style={{fontSize:14,color:C.text,flex:1}}>{ing.name}</span>
       {editIdx===idx
         ?<input autoFocus style={{width:70,background:"transparent",border:"none",borderBottom:`2px solid ${C.accent}`,color:C.accent,fontSize:14,fontWeight:600,textAlign:"right",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif"}} value={ingVal} onChange={e=>setIngVal(e.target.value)} onBlur={()=>commitIng(idx)} onKeyDown={e=>e.key==="Enter"&&commitIng(idx)}/>
-        :<div style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",color:C.sub}} onClick={()=>{setEditIdx(idx);setIngVal(String(ing.calories));}}><span style={{fontSize:14,fontWeight:600}}>{ing.calories} kcal</span><IcEdit/></div>
+        :<div style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",color:C.sub}} onClick={()=>{setEditIdx(idx);setIngVal(String(ing.calories));}}><span style={{fontSize:13,fontWeight:600}}>{ing.calories} kcal{ing.proteinG?` · ${ing.proteinG}g`:""}</span><IcEdit/></div>
       }
     </div>
   </div>;
@@ -767,12 +778,18 @@ function DetailScreen({meal,onBack,onUpdate,onDelete}) {
       <h2 style={{fontSize:22,fontWeight:800,color:isWorkout?C.orange:C.text,marginBottom:6,letterSpacing:"-0.5px"}}>{meal.mealTitle}</h2>
       <p style={{fontSize:13,color:C.sub,lineHeight:1.6,marginBottom:5}}>{meal.summary}</p>
       <p style={{fontSize:11,color:C.dim,marginBottom:20}}>{meal.time}</p>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 18px",background:isWorkout?C.oDim:C.aDim,border:`1px solid ${isWorkout?C.oMid:C.aMid}`,borderRadius:16,marginBottom:18,cursor:"pointer"}} onClick={()=>{setTotalVal(String(meal.totalCalories));setEditTotal(true);}}>
-        <span style={{fontSize:14,fontWeight:700,color:C.text}}>{isWorkout?"Calories Burned":"Total Calories"}</span>
-        {editTotal
-          ?<input autoFocus style={{width:80,background:"transparent",border:"none",borderBottom:`2px solid ${isWorkout?C.orange:C.accent}`,color:isWorkout?C.orange:C.accent,fontSize:28,fontWeight:800,fontFamily:"'Plus Jakarta Sans',sans-serif",outline:"none",textAlign:"right"}} value={totalVal} onChange={e=>setTotalVal(e.target.value)} onBlur={commitTotal} onKeyDown={e=>e.key==="Enter"&&commitTotal()} onClick={e=>e.stopPropagation()}/>
-          :<div style={{display:"flex",alignItems:"center",gap:6,color:isWorkout?C.orange:C.accent}}><span style={{fontSize:28,fontWeight:800,letterSpacing:"-1px"}}>{meal.totalCalories}</span><span style={{fontSize:12,opacity:0.7}}>kcal</span><IcEdit size={14}/></div>
-        }
+      <div style={{display:"flex",gap:10,marginBottom:18}}>
+        <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 18px",background:isWorkout?C.oDim:C.aDim,border:`1px solid ${isWorkout?C.oMid:C.aMid}`,borderRadius:16,cursor:"pointer"}} onClick={()=>{setTotalVal(String(meal.totalCalories));setEditTotal(true);}}>
+          <span style={{fontSize:13,fontWeight:700,color:C.text}}>{isWorkout?"Calories Burned":"Calories"}</span>
+          {editTotal
+            ?<input autoFocus style={{width:80,background:"transparent",border:"none",borderBottom:`2px solid ${isWorkout?C.orange:C.accent}`,color:isWorkout?C.orange:C.accent,fontSize:26,fontWeight:800,fontFamily:"'Plus Jakarta Sans',sans-serif",outline:"none",textAlign:"right"}} value={totalVal} onChange={e=>setTotalVal(e.target.value)} onBlur={commitTotal} onKeyDown={e=>e.key==="Enter"&&commitTotal()} onClick={e=>e.stopPropagation()}/>
+            :<div style={{display:"flex",alignItems:"center",gap:5,color:isWorkout?C.orange:C.accent}}><span style={{fontSize:26,fontWeight:800,letterSpacing:"-1px"}}>{meal.totalCalories}</span><span style={{fontSize:11,opacity:0.7}}>kcal</span><IcEdit size={13}/></div>
+          }
+        </div>
+        {!isWorkout&&(meal.totalProteinG||0)>0&&<div style={{padding:"16px 14px",background:"rgba(96,200,245,0.1)",border:"1px solid rgba(96,200,245,0.3)",borderRadius:16,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minWidth:72}}>
+          <span style={{fontSize:20,fontWeight:800,color:"#60C8F5",letterSpacing:"-0.5px"}}>{meal.totalProteinG}g</span>
+          <span style={{fontSize:9,color:C.dim,textTransform:"uppercase",letterSpacing:"0.5px",marginTop:1}}>protein</span>
+        </div>}
       </div>
       {!isWorkout&&ings.length>0&&<div style={{background:C.surface,borderRadius:16,border:`1px solid ${C.border}`,overflow:"hidden"}}>
         <p style={{fontSize:11,fontWeight:700,color:C.sub,textTransform:"uppercase",letterSpacing:"1px",padding:"12px 16px 8px"}}>Breakdown</p>
@@ -792,64 +809,54 @@ function DetailScreen({meal,onBack,onUpdate,onDelete}) {
 function App() {
   const [apiKey,setApiKey]=useState(()=>loadKey());
   const [screen,setScreen]=useState("home");
-  const [date,setDate]=useState(new Date());
+  // dateKey drives everything — meals always read fresh from localStorage
+  const [dateKey,setDateKey]=useState(()=>fmtKey(new Date()));
   const [baseGoal,setBaseGoal]=useState(()=>loadBaseGoal());
   const [goal,setGoal]=useState(()=>loadGoal());
   const [selected,setSelected]=useState(null);
   const [camImg,setCamImg]=useState({b64:null,preview:null});
+  // Render counter forces re-render when meals change, meals always from localStorage
+  const [tick,setTick]=useState(0);
+  const bump = ()=>setTick(t=>t+1);
 
-  const [meals,setMeals]=useState(()=>loadMeals(fmtKey(new Date())));
-  const dateRef = useRef(fmtKey(new Date()));
-  const mealsRef = useRef(meals); // always holds current meals, no stale closure
+  // meals always read fresh — never stale
+  const meals = loadMeals(dateKey);
 
-  // Keep mealsRef in sync with meals state
-  useEffect(()=>{ mealsRef.current = meals; },[meals]);
+  // Recalculate goal when meals or baseGoal change
+  const burned = meals.filter(m=>m.type==="workout").reduce((s,m)=>s+m.totalCalories,0);
+  const effectiveGoal = baseGoal + burned;
 
-  // When date changes: save current meals using mealsRef (never stale), then load new date
-  useEffect(()=>{
-    const newKey = fmtKey(date);
-    if(newKey === dateRef.current) return;
-    saveMeals(dateRef.current, mealsRef.current); // save current day before switching
-    dateRef.current = newKey;
-    const loaded = loadMeals(newKey);
-    mealsRef.current = loaded;
-    setMeals(loaded);
-  },[date]);
+  const changeDate = (d) => {
+    const key = fmtKey(d);
+    setDateKey(key);
+    bump();
+  };
 
-  // Recalculate effective goal whenever meals change
-  useEffect(()=>{
-    const burned = meals.filter(m=>m.type==="workout").reduce((s,m)=>s+m.totalCalories,0);
-    const effective = baseGoal + burned;
-    setGoal(effective);
-    saveGoal(effective);
-  },[meals,baseGoal]);
+  const mutateMeals = (fn) => {
+    const current = loadMeals(dateKey);
+    const next = fn(current);
+    saveMeals(dateKey, next);
+    bump();
+  };
 
   const addMeal=m=>{
     recordFoodItems(m.ingredients);
-    setMeals(p=>{ const next=[...p,m]; mealsRef.current=next; saveMeals(dateRef.current,next); return next; });
+    mutateMeals(p=>[...p,m]);
     setScreen("home");
   };
-  const addWorkout=w=>{
-    setMeals(p=>{ const next=[...p,w]; mealsRef.current=next; saveMeals(dateRef.current,next); return next; });
-  };
+  const addWorkout=w=>{ mutateMeals(p=>[...p,w]); };
   const updateMeal=m=>{
     recordFoodItems(m.ingredients);
-    setMeals(p=>{ const next=p.map(x=>x.id===m.id?m:x); mealsRef.current=next; saveMeals(dateRef.current,next); return next; });
+    mutateMeals(p=>p.map(x=>x.id===m.id?m:x));
     setSelected(m);
   };
   const deleteMeal=id=>{
-    setMeals(p=>{ const next=p.filter(x=>x.id!==id); mealsRef.current=next; saveMeals(dateRef.current,next); return next; });
+    mutateMeals(p=>p.filter(x=>x.id!==id));
     setScreen("home");
   };
   const selectMeal=m=>{
-    if(m._quickEdit){
-      setMeals(p=>{ const next=p.map(x=>x.id===m.id?{...x,totalCalories:m._newCal}:x); mealsRef.current=next; saveMeals(dateRef.current,next); return next; });
-      return;
-    }
-    if(m._delete){
-      setMeals(p=>{ const next=p.filter(x=>x.id!==m.id); mealsRef.current=next; saveMeals(dateRef.current,next); return next; });
-      return;
-    }
+    if(m._quickEdit){ mutateMeals(p=>p.map(x=>x.id===m.id?{...x,totalCalories:m._newCal}:x)); return; }
+    if(m._delete){ mutateMeals(p=>p.filter(x=>x.id!==m.id)); return; }
     setSelected(m); setScreen("detail");
   };
 
@@ -861,9 +868,10 @@ function App() {
       onOpenVoice={()=>setScreen("voice")}
       onAddWorkout={addWorkout}
       onSelectMeal={selectMeal}
-      meals={meals} goal={goal} baseGoal={baseGoal}
-      setGoal={setGoal} setBaseGoal={setBaseGoal}
-      date={date} setDate={setDate}
+      meals={meals} goal={effectiveGoal} baseGoal={baseGoal}
+      setGoal={g=>{setBaseGoal(g);saveBaseGoal(g);saveGoal(g+burned);}}
+      setBaseGoal={setBaseGoal}
+      date={new Date(dateKey+"T12:00:00")} setDate={d=>changeDate(d)}
     />}
     {screen==="camera"&&<PhotoScreen apiKey={apiKey} imageBase64={camImg.b64} imagePreview={camImg.preview} onBack={()=>setScreen("home")} onAdd={addMeal}/>}
     {screen==="voice"&&<VoiceScreen apiKey={apiKey} onBack={()=>setScreen("home")} onAdd={addMeal}/>}

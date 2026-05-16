@@ -780,94 +780,72 @@ function App() {
   const [selected,setSelected]=useState(null);
   const [camImg,setCamImg]=useState({b64:null,preview:null});
 
-  const todayKey = fmtKey(new Date());
+  // ── Single source of truth: dateKey ref + a render counter to force re-reads
+  // from localStorage. No meals array in React state at all — we read directly
+  // from localStorage on every render so there is zero stale-closure risk.
+  const dateKeyRef = useRef(fmtKey(new Date()));
+  const [, forceRender] = useState(0);
+  const bump = () => forceRender(n => n + 1);
 
-  // ── FIX: dateKey lives in plain state, meals are always read/written via
-  // saveMeals(dateKey, ...) using the CURRENT dateKey at call time — not
-  // inside a setState updater where the value could be stale.
-  const [dateKey, setDateKey] = useState(todayKey);
-  const [meals, setMeals] = useState(() => loadMeals(todayKey));
-
-  // Keep a ref so async callbacks (addMeal after AI responds) always see the
-  // current dateKey even if the user navigated while the request was in-flight.
-  const dateKeyRef = useRef(dateKey);
-  useEffect(() => { dateKeyRef.current = dateKey; }, [dateKey]);
+  const dateKey = dateKeyRef.current;
+  const meals = loadMeals(dateKey);
 
   const burned = meals.filter(m=>m.type==="workout").reduce((s,m)=>s+m.totalCalories,0);
   const effectiveGoal = baseGoal + burned;
 
-  // Change date: flush current meals to storage first, then load the new day.
   const changeDate = (d) => {
     const newKey = fmtKey(d);
-    if (newKey === dateKey) return;
-    // Each mutation (addMeal, addWorkout, updateMeal, deleteMeal) already
-    // saves to localStorage immediately, so there is nothing to flush here.
-    // Re-saving from the meals state variable would overwrite good data with
-    // a stale snapshot if a meal was added after the last render.
+    if (newKey === dateKeyRef.current) return;
     dateKeyRef.current = newKey;
-    setDateKey(newKey);
-    setMeals(loadMeals(newKey));
+    bump();
   };
 
   const addMeal = m => {
     recordFoodItems(m.ingredients);
-    // Use ref so this is correct even if user navigated during AI call
     const key = dateKeyRef.current;
-    setMeals(prev => {
-      const next = [...prev, m];
-      saveMeals(key, next);
-      return next;
-    });
+    const next = [...loadMeals(key), m];
+    saveMeals(key, next);
     setScreen("home");
+    bump();
   };
 
   const addWorkout = w => {
     const key = dateKeyRef.current;
-    setMeals(prev => {
-      const next = [...prev, w];
-      saveMeals(key, next);
-      return next;
-    });
+    const next = [...loadMeals(key), w];
+    saveMeals(key, next);
+    bump();
   };
 
   const updateMeal = m => {
     recordFoodItems(m.ingredients);
     const key = dateKeyRef.current;
-    setMeals(prev => {
-      const next = prev.map(x=>x.id===m.id?m:x);
-      saveMeals(key, next);
-      return next;
-    });
+    const next = loadMeals(key).map(x => x.id===m.id ? m : x);
+    saveMeals(key, next);
     setSelected(m);
+    bump();
   };
 
   const deleteMeal = id => {
     const key = dateKeyRef.current;
-    setMeals(prev => {
-      const next = prev.filter(x=>x.id!==id);
-      saveMeals(key, next);
-      return next;
-    });
+    const next = loadMeals(key).filter(x => x.id!==id);
+    saveMeals(key, next);
     setScreen("home");
+    bump();
   };
 
   const selectMeal = m => {
     if(m._quickEdit){
       const key = dateKeyRef.current;
-      setMeals(prev => {
-        const next = prev.map(x=>x.id===m.id?{...x,totalCalories:m._newCal}:x);
-        saveMeals(key, next);
-        return next;
-      });
+      const next = loadMeals(key).map(x => x.id===m.id ? {...x,totalCalories:m._newCal} : x);
+      saveMeals(key, next);
+      bump();
       return;
     }
     if(m._delete){
       const key = dateKeyRef.current;
-      setMeals(prev => {
-        const next = prev.filter(x=>x.id!==m.id);
-        saveMeals(key, next);
-        return next;
-      });
+      const next = loadMeals(key).filter(x => x.id!==m.id);
+      saveMeals(key, next);
+      bump();
       return;
     }
     setSelected(m); setScreen("detail");

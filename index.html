@@ -809,58 +809,92 @@ function DetailScreen({meal,onBack,onUpdate,onDelete}) {
 function App() {
   const [apiKey,setApiKey]=useState(()=>loadKey());
   const [screen,setScreen]=useState("home");
-  const [dateKey,setDateKey]=useState(()=>fmtKey(new Date()));
-  const dateKeyRef=useRef(fmtKey(new Date())); // always current, no closure issues
+// ─── App root ─────────────────────────────────────────────────────────────────
+function App() {
+  const [apiKey,setApiKey]=useState(()=>loadKey());
+  const [screen,setScreen]=useState("home");
   const [baseGoal,setBaseGoal]=useState(()=>loadBaseGoal());
-  const [goal,setGoal]=useState(()=>loadGoal());
   const [selected,setSelected]=useState(null);
   const [camImg,setCamImg]=useState({b64:null,preview:null});
-  const [meals,setMeals]=useState(()=>loadMeals(fmtKey(new Date())));
 
+  // Single atomic state: dateKey + meals together
+  // Using one object means dateKey and meals are ALWAYS in sync
+  const todayKey = fmtKey(new Date());
+  const [state,setState]=useState(()=>({
+    dateKey: todayKey,
+    meals: loadMeals(todayKey)
+  }));
+
+  const {dateKey, meals} = state;
   const burned = meals.filter(m=>m.type==="workout").reduce((s,m)=>s+m.totalCalories,0);
   const effectiveGoal = baseGoal + burned;
 
-  // Date navigation — save current meals first using ref, then switch
+  // Change date: save current meals first, then load new day
   const changeDate = (d) => {
     const newKey = fmtKey(d);
-    if(newKey === dateKeyRef.current) return;
-    // Read current meals directly from localStorage (ground truth) and save them
-    // This ensures we save what's actually stored, not what React thinks is stored
-    const currentSaved = loadMeals(dateKeyRef.current);
-    saveMeals(dateKeyRef.current, currentSaved); // no-op but confirms save
-    dateKeyRef.current = newKey;
-    setDateKey(newKey);
-    const loaded = loadMeals(newKey);
-    setMeals(loaded);
+    setState(prev => {
+      // Save current day before leaving
+      saveMeals(prev.dateKey, prev.meals);
+      const loaded = loadMeals(newKey);
+      return { dateKey: newKey, meals: loaded };
+    });
   };
 
-  // All mutations write to localStorage via ref key (never stale)
-  const mutateMeals = (fn) => {
-    const key = dateKeyRef.current;
-    const current = loadMeals(key); // always read fresh from localStorage
-    const next = fn(current);
-    saveMeals(key, next);
-    setMeals(next); // update React state so UI re-renders
-  };
-
+  // All mutations use setState updater — prev.dateKey is always correct
   const addMeal = m => {
     recordFoodItems(m.ingredients);
-    mutateMeals(p=>[...p,m]);
+    setState(prev => {
+      const next = [...prev.meals, m];
+      saveMeals(prev.dateKey, next);
+      return { ...prev, meals: next };
+    });
     setScreen("home");
   };
-  const addWorkout = w => mutateMeals(p=>[...p,w]);
+
+  const addWorkout = w => {
+    setState(prev => {
+      const next = [...prev.meals, w];
+      saveMeals(prev.dateKey, next);
+      return { ...prev, meals: next };
+    });
+  };
+
   const updateMeal = m => {
     recordFoodItems(m.ingredients);
-    mutateMeals(p=>p.map(x=>x.id===m.id?m:x));
+    setState(prev => {
+      const next = prev.meals.map(x=>x.id===m.id?m:x);
+      saveMeals(prev.dateKey, next);
+      return { ...prev, meals: next };
+    });
     setSelected(m);
   };
+
   const deleteMeal = id => {
-    mutateMeals(p=>p.filter(x=>x.id!==id));
+    setState(prev => {
+      const next = prev.meals.filter(x=>x.id!==id);
+      saveMeals(prev.dateKey, next);
+      return { ...prev, meals: next };
+    });
     setScreen("home");
   };
+
   const selectMeal = m => {
-    if(m._quickEdit){ mutateMeals(p=>p.map(x=>x.id===m.id?{...x,totalCalories:m._newCal}:x)); return; }
-    if(m._delete){ mutateMeals(p=>p.filter(x=>x.id!==m.id)); return; }
+    if(m._quickEdit){
+      setState(prev => {
+        const next = prev.meals.map(x=>x.id===m.id?{...x,totalCalories:m._newCal}:x);
+        saveMeals(prev.dateKey, next);
+        return { ...prev, meals: next };
+      });
+      return;
+    }
+    if(m._delete){
+      setState(prev => {
+        const next = prev.meals.filter(x=>x.id!==m.id);
+        saveMeals(prev.dateKey, next);
+        return { ...prev, meals: next };
+      });
+      return;
+    }
     setSelected(m); setScreen("detail");
   };
 
@@ -875,7 +909,7 @@ function App() {
       meals={meals} goal={effectiveGoal} baseGoal={baseGoal}
       setGoal={g=>{setBaseGoal(g);saveBaseGoal(g);saveGoal(g+burned);}}
       setBaseGoal={setBaseGoal}
-      date={new Date(dateKey+"T12:00:00")} setDate={d=>changeDate(d)}
+      date={new Date(dateKey+"T12:00:00")} setDate={changeDate}
     />}
     {screen==="camera"&&<PhotoScreen apiKey={apiKey} imageBase64={camImg.b64} imagePreview={camImg.preview} onBack={()=>setScreen("home")} onAdd={addMeal}/>}
     {screen==="voice"&&<VoiceScreen apiKey={apiKey} onBack={()=>setScreen("home")} onAdd={addMeal}/>}

@@ -39,17 +39,12 @@ const ls = {
 };
 const loadMeals = d => { try { return JSON.parse(ls.get(`jct:m:${d}`) || "[]"); } catch { return []; } };
 const saveMeals = (d,m) => ls.set(`jct:m:${d}`, JSON.stringify(m));
-const loadGoal = () => parseInt(ls.get("jct:goal") || "1600");
-const saveGoal = g => ls.set("jct:goal", String(g));
-// Store base goal separately from workout-adjusted goal
 const loadBaseGoal = () => parseInt(ls.get("jct:basegoal") || "1600");
 const saveBaseGoal = g => ls.set("jct:basegoal", String(g));
 const loadKey = () => ls.get("jct:apikey") || "";
 const saveKey = k => ls.set("jct:apikey", k);
 const loadWeights = () => { try { return JSON.parse(ls.get("jct:weights") || "[]"); } catch { return []; } };
 const saveWeights = w => ls.set("jct:weights", JSON.stringify(w));
-// Track whether mic permission has been granted before
-const hasMicPerm = () => ls.get("jct:micperm") === "granted";
 const setMicPerm = () => ls.set("jct:micperm", "granted");
 const loadWorkoutLabels = () => { try { return JSON.parse(ls.get("jct:wlabels") || "[]"); } catch { return []; } };
 const saveWorkoutLabels = arr => ls.set("jct:wlabels", JSON.stringify(arr));
@@ -92,7 +87,7 @@ CRITICAL RULES:
         {role:"user",content}
       ],
       max_tokens:600,
-      temperature:0.1  // lower temp = more consistent, less hallucination
+      temperature:0.1
     })
   });
   if(!res.ok){const e=await res.json();throw new Error(e.error?.message||"OpenAI error");}
@@ -139,7 +134,6 @@ const IcRight = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none
 const IcEdit = ({size=13}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
 const IcBack = () => <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>;
 const IcTrash = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>;
-const IcFire = ({size=22}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z" fill="none"/><path d="M12 22c0 0-6-4-6-10 0-3.3 2.7-6 6-6s6 2.7 6 6c0 6-6 10-6 10z"/><path d="M12 12c0 0-2-1.5-2-3.5S11 5 12 5s2 1.5 2 3.5-2 3.5-2 3.5z"/></svg>;
 
 // ─── Shared: Spinner ──────────────────────────────────────────────────────────
 function Spinner({text}) {
@@ -208,7 +202,6 @@ function WeightSparkline({data}) {
 const loadFoodHistory = () => { try { return JSON.parse(ls.get("jct:foodhist") || "[]"); } catch { return []; } };
 const saveFoodHistory = arr => ls.set("jct:foodhist", JSON.stringify(arr));
 
-// When a meal is added, save each ingredient to history
 function recordFoodItems(ingredients) {
   if(!ingredients||!ingredients.length) return;
   const existing = loadFoodHistory();
@@ -217,6 +210,8 @@ function recordFoodItems(ingredients) {
   ingredients.forEach(f => { map[f.name.toLowerCase()] = {name:f.name, calories:f.calories, proteinG:f.proteinG||0}; });
   saveFoodHistory(Object.values(map).slice(0,100));
 }
+
+// ─── MealCard ─────────────────────────────────────────────────────────────────
 function MealCard({meal,onTap,onQuickEdit,onDelete}) {
   const [editing,setEditing]=useState(false);
   const [val,setVal]=useState(String(meal.totalCalories));
@@ -238,7 +233,7 @@ function MealCard({meal,onTap,onQuickEdit,onDelete}) {
     const dx=e.touches[0].clientX-touchStartX.current;
     const dy=Math.abs(e.touches[0].clientY-touchStartY.current);
     if(dy>20&&Math.abs(dx)<20) return;
-    if(dx<0){ // swipe LEFT to delete
+    if(dx<0){
       setSwiping(true);
       setSwipeX(Math.max(dx,-(THRESHOLD+30)));
     }
@@ -249,12 +244,10 @@ function MealCard({meal,onTap,onQuickEdit,onDelete}) {
   };
 
   return <div style={{position:"relative",marginBottom:10,borderRadius:16,overflow:"hidden"}}>
-    {/* Delete background — right side, revealed by swiping left */}
     <div style={{position:"absolute",inset:0,background:C.red,borderRadius:16,display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:20}}>
       <span style={{color:"#fff",fontSize:13,fontWeight:700,marginRight:6}}>Delete</span>
       <IcTrash/>
     </div>
-    {/* Card — translates left on swipe */}
     <div
       style={{display:"flex",alignItems:"center",gap:12,background:C.card,border:`1px solid ${isWorkout?C.oMid:C.border}`,borderRadius:16,padding:"12px 14px",cursor:"pointer",animation:swiping?"none":"fadeUp 0.25s ease",transform:`translateX(${swipeX}px)`,transition:swiping?"none":"transform 0.3s ease"}}
       onClick={()=>{if(!editing&&swipeX===0)onTap(meal);}}
@@ -310,7 +303,6 @@ function WorkoutModal({onAdd,onClose}) {
     const n=parseInt(cal);
     if(isNaN(n)||n<=0) return;
     const finalLabel=label.trim()||"Workout";
-    // Persist label and update history
     ls.set("jct:lastlabel", finalLabel);
     if(finalLabel!=="Workout"){
       const updated=[...new Set([finalLabel,...allLabels])].slice(0,20);
@@ -335,8 +327,6 @@ function WorkoutModal({onAdd,onClose}) {
       <div style={{width:36,height:4,background:C.border,borderRadius:2,margin:"0 auto 20px"}}/>
       <p style={{fontSize:17,fontWeight:800,color:C.text,marginBottom:4}}>Log Workout</p>
       <p style={{fontSize:12,color:C.sub,marginBottom:20}}>Calories burned will increase today's goal</p>
-
-      {/* Label with autocomplete */}
       <div style={{position:"relative",marginBottom:12}}>
         <input type="text" placeholder="Activity (e.g. OrangeTheory, Walking…)" value={label}
           onChange={e=>handleLabelChange(e.target.value)}
@@ -346,20 +336,16 @@ function WorkoutModal({onAdd,onClose}) {
         {showSugg&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden",zIndex:10,marginTop:4}}>
           {suggestions.map((s,i)=>(
             <div key={i} onMouseDown={()=>pickSuggestion(s)}
-              style={{padding:"12px 16px",fontSize:14,color:C.text,cursor:"pointer",borderBottom:i<suggestions.length-1?`1px solid ${C.border}`:"none",background:"transparent"}}
-              onMouseEnter={e=>e.target.style.background=C.hover}
-              onMouseLeave={e=>e.target.style.background="transparent"}>
+              style={{padding:"12px 16px",fontSize:14,color:C.text,cursor:"pointer",borderBottom:i<suggestions.length-1?`1px solid ${C.border}`:"none",background:"transparent"}}>
               {s}
             </div>
           ))}
         </div>}
       </div>
-
       <input ref={calRef} type="number" inputMode="numeric" placeholder="Calories burned" value={cal}
         onChange={e=>setCal(e.target.value)}
         onKeyDown={e=>e.key==="Enter"&&submit()}
         style={{width:"100%",background:C.hover,border:`1px solid ${C.border}`,borderRadius:12,color:C.text,fontSize:22,fontWeight:800,padding:"14px 16px",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",marginBottom:16,letterSpacing:"-0.5px"}}/>
-
       <button style={{width:"100%",background:C.orange,border:"none",borderRadius:14,color:"#fff",fontSize:15,fontWeight:700,padding:"16px",cursor:"pointer",opacity:parseInt(cal)>0?1:0.4}} onClick={submit} disabled={!(parseInt(cal)>0)}>
         Add Workout 🔥
       </button>
@@ -389,7 +375,7 @@ function ApiKeyScreen({onSave}) {
 }
 
 // ─── Home screen ──────────────────────────────────────────────────────────────
-function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,meals,goal,baseGoal,setGoal,setBaseGoal,date,setDate}) {
+function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,meals,goal,baseGoal,setBaseGoal,date,setDate}) {
   const [editGoal,setEditGoal]=useState(false);
   const [goalVal,setGoalVal]=useState(String(baseGoal));
   const [weightLog,setWeightLog]=useState(()=>loadWeights());
@@ -398,7 +384,6 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,meals,go
   const [showWorkout,setShowWorkout]=useState(false);
   const fileRef=useRef();
 
-  // Meals are foods only; workouts are separate type
   const eaten = meals.filter(m=>m.type!=="workout").reduce((s,m)=>s+m.totalCalories,0);
   const burned = meals.filter(m=>m.type==="workout").reduce((s,m)=>s+m.totalCalories,0);
   const protein = meals.filter(m=>m.type!=="workout").reduce((s,m)=>s+(m.totalProteinG||0),0);
@@ -407,12 +392,12 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,meals,go
   const commitGoal=()=>{
     const n=parseInt(goalVal);
     if(!isNaN(n)&&n>0){
-      setBaseGoal(n); saveBaseGoal(n);
-      // Recalculate effective goal = base + burned
-      setGoal(n+burned); saveGoal(n+burned);
+      setBaseGoal(n);
+      saveBaseGoal(n);
     } else setGoalVal(String(baseGoal));
     setEditGoal(false);
   };
+
   const commitWeight=()=>{
     const n=parseFloat(weightVal);
     if(!isNaN(n)&&n>0){
@@ -422,6 +407,7 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,meals,go
     }
     setEditWeight(false);
   };
+
   const shift=days=>{const d=new Date(date);d.setDate(d.getDate()+days);setDate(d);};
 
   const handleAddWorkout=(workout)=>{
@@ -455,9 +441,9 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,meals,go
           <span style={{fontSize:16,color:C.dim,fontWeight:300,margin:"0 2px"}}>/</span>
           {editGoal
             ?<input autoFocus style={{background:"transparent",border:"none",borderBottom:`2px solid ${C.accent}`,color:C.text,fontSize:22,fontWeight:800,fontFamily:"'Plus Jakarta Sans',sans-serif",letterSpacing:"-0.5px",outline:"none",padding:0,width:80,lineHeight:1}} value={goalVal} onChange={e=>setGoalVal(e.target.value)} onBlur={commitGoal} onKeyDown={e=>e.key==="Enter"&&commitGoal()}/>
-            :<span style={{fontSize:20,fontWeight:700,color:C.sub,letterSpacing:"-0.5px",cursor:"pointer",lineHeight:1,textDecoration:"none",borderBottom:"none",WebkitUserSelect:"none"}} onClick={()=>{setGoalVal(String(baseGoal));setEditGoal(true);}}>{goal}</span>
+            :<span style={{fontSize:20,fontWeight:700,color:C.sub,letterSpacing:"-0.5px",cursor:"pointer",lineHeight:1,WebkitUserSelect:"none"}} onClick={()=>{setGoalVal(String(baseGoal));setEditGoal(true);}}>{goal}</span>
           }
-          {!editGoal&&<span style={{color:C.dim,cursor:"pointer",display:"inline-flex",alignItems:"center",marginLeft:2,textDecoration:"none"}} onClick={()=>{setGoalVal(String(baseGoal));setEditGoal(true);}}><IcEdit/></span>}
+          {!editGoal&&<span style={{color:C.dim,cursor:"pointer",display:"inline-flex",alignItems:"center",marginLeft:2}} onClick={()=>{setGoalVal(String(baseGoal));setEditGoal(true);}}><IcEdit/></span>}
         </div>
         <span style={{fontSize:9,color:C.dim,fontWeight:500,marginTop:1}}>
           {editGoal?"enter base goal + return":burned>0?`${baseGoal} + ${burned} burned`:"calories eaten / goal"}
@@ -482,7 +468,7 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,meals,go
       </div>
     </div>
 
-    {/* Add buttons: camera, mic, workout */}
+    {/* Add buttons */}
     <div style={{display:"flex",gap:10,padding:"0 16px 18px"}}>
       <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"15px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,color:C.text,cursor:"pointer"}} onClick={()=>fileRef.current.click()}><IcCamera/></button>
       <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>onOpenCamera(ev.target.result.split(",")[1],ev.target.result);r.readAsDataURL(f);e.target.value="";}}/>
@@ -490,7 +476,7 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,meals,go
       <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"15px",background:C.oDim,border:`1px solid ${C.oMid}`,borderRadius:16,color:C.orange,cursor:"pointer",fontSize:22}} onClick={()=>setShowWorkout(true)}>🔥</button>
     </div>
 
-    {/* Meals & Workouts list */}
+    {/* Meals list */}
     <div style={{padding:"0 16px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
         <span style={{fontSize:15,fontWeight:700,color:C.text}}>Meals & Workouts</span>
@@ -511,7 +497,7 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,meals,go
 
 // ─── Recording hook ───────────────────────────────────────────────────────────
 function useRecorder(apiKey, onTranscript) {
-  const [phase, setPhase] = useState("idle"); // idle | requesting | recording | transcribing
+  const [phase, setPhase] = useState("idle");
   const [elapsed, setElapsed] = useState(0);
   const mrRef=useRef(null),chunksRef=useRef([]),timerRef=useRef(null),streamRef=useRef(null);
 
@@ -527,7 +513,7 @@ function useRecorder(apiKey, onTranscript) {
     setPhase("requesting"); setElapsed(0); chunksRef.current=[];
     try {
       const stream = await navigator.mediaDevices.getUserMedia({audio:true});
-      setMicPerm(); // remember permission was granted
+      setMicPerm();
       streamRef.current=stream;
       const mimeTypes=["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/ogg",""];
       const mimeType=mimeTypes.find(m=>!m||MediaRecorder.isTypeSupported(m))||"";
@@ -572,7 +558,6 @@ function VoiceScreen({apiKey,onBack,onAdd}) {
 
   const handleTranscriptChange = (val) => {
     setTranscript(val);
-    // Check last word typed for food history matches
     const words = val.split(/[\s,]+/);
     const lastWord = words[words.length-1].trim();
     if(lastWord.length>=2){
@@ -585,7 +570,6 @@ function VoiceScreen({apiKey,onBack,onAdd}) {
   };
 
   const pickFood = (food) => {
-    // Append the food name to transcript
     const words = transcript.split(/[\s,]+/);
     words[words.length-1] = food.name;
     setTranscript(words.join(" ") + ` (${food.calories} cal)`);
@@ -598,7 +582,7 @@ function VoiceScreen({apiKey,onBack,onAdd}) {
     try {
       const r = await analyze(apiKey,null,transcript);
       const now = new Date();
-      onAdd({id:uid(),mealTitle:r.mealTitle,totalCalories:r.totalCalories,ingredients:r.ingredients||[],summary:r.summary,imageBase64:null,time:now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),addedAt:now.getTime(),emoji:EMOJIS[Math.floor(Math.random()*EMOJIS.length)]});
+      onAdd({id:uid(),mealTitle:r.mealTitle,totalCalories:r.totalCalories,totalProteinG:r.totalProteinG||0,ingredients:r.ingredients||[],summary:r.summary,imageBase64:null,time:now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),addedAt:now.getTime(),emoji:EMOJIS[Math.floor(Math.random()*EMOJIS.length)]});
     } catch(e) { setError(e.message||"Error — check API key"); setSubmitting(false); }
   };
 
@@ -623,23 +607,18 @@ function VoiceScreen({apiKey,onBack,onAdd}) {
         </div>
       </div>
       <VoiceVisualizer active={isRec}/>
-
-      {/* Transcript with food history suggestions */}
       <div style={{position:"relative"}}>
         <textarea style={{width:"100%",minHeight:110,background:C.surface,border:`1px solid ${transcript?C.aMid:C.border}`,borderRadius:14,color:transcript?C.text:C.sub,fontSize:14,padding:"14px 16px",resize:"none",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",lineHeight:1.65,transition:"border-color 0.2s"}} placeholder="Your words appear here as you speak…&#10;Or tap to type what you ate." value={transcript} onChange={e=>handleTranscriptChange(e.target.value)} onBlur={()=>setTimeout(()=>setShowFoodSugg(false),150)}/>
         {showFoodSugg&&<div style={{position:"absolute",bottom:"100%",left:0,right:0,background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden",marginBottom:4,zIndex:10}}>
           <p style={{fontSize:10,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.8px",padding:"8px 14px 4px"}}>Previously logged</p>
           {foodSugg.map((f,i)=>(
-            <div key={i} onMouseDown={()=>pickFood(f)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderTop:`1px solid ${C.border}`,cursor:"pointer",background:"transparent"}}
-              onMouseEnter={e=>e.currentTarget.style.background=C.hover}
-              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <div key={i} onMouseDown={()=>pickFood(f)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderTop:`1px solid ${C.border}`,cursor:"pointer",background:"transparent"}}>
               <span style={{fontSize:14,color:C.text}}>{f.name}</span>
               <span style={{fontSize:13,fontWeight:700,color:C.accent}}>{f.calories} cal</span>
             </div>
           ))}
         </div>}
       </div>
-
       {error&&<p style={{color:C.red,fontSize:13,textAlign:"center",lineHeight:1.5}}>{error}</p>}
       <div style={{display:"flex",gap:10}}>
         {isRec&&<button style={{flexShrink:0,background:C.rDim,border:`2px solid ${C.red}`,borderRadius:14,color:C.red,fontSize:13,fontWeight:700,padding:"16px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}} onClick={rec.stop}>
@@ -665,7 +644,7 @@ function PhotoScreen({apiKey,imageBase64,imagePreview,onBack,onAdd}) {
     try {
       const r = await analyze(apiKey, imageBase64, transcript||undefined);
       const now = new Date();
-      onAdd({id:uid(),mealTitle:r.mealTitle,totalCalories:r.totalCalories,ingredients:r.ingredients||[],summary:r.summary,imageBase64,time:now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),addedAt:now.getTime(),emoji:null});
+      onAdd({id:uid(),mealTitle:r.mealTitle,totalCalories:r.totalCalories,totalProteinG:r.totalProteinG||0,ingredients:r.ingredients||[],summary:r.summary,imageBase64,time:now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),addedAt:now.getTime(),emoji:null});
     } catch(e) { setError(e.message||"Error"); setSubmitting(false); }
   };
 
@@ -673,24 +652,16 @@ function PhotoScreen({apiKey,imageBase64,imagePreview,onBack,onAdd}) {
 
   const isRec=rec.phase==="recording", isReq=rec.phase==="requesting";
 
-  // Fixed full-height layout — nothing scrolls, everything fits on screen
   return <div style={{height:"100%",background:C.bg,display:"flex",flexDirection:"column"}}>
-    {/* Nav */}
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(env(safe-area-inset-top,44px) + 8px) 16px 8px",flexShrink:0}}>
       <button style={{width:40,height:40,borderRadius:11,background:C.hover,border:`1px solid ${C.border}`,color:C.text,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>{rec.stopAll();onBack();}}><IcBack/></button>
       <span style={{fontSize:16,fontWeight:700,color:C.text}}>Add Meal Photo</span>
       <div style={{width:40}}/>
     </div>
-
-    {/* Photo — flex:1 so it fills all available space between nav and controls */}
     {imagePreview&&<div style={{flex:1,minHeight:0,padding:"0 16px 8px"}}>
       <img src={imagePreview} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:16,border:`1px solid ${C.border}`,display:"block"}} alt=""/>
     </div>}
-
-    {/* Controls pinned at bottom — compact, no scroll needed */}
     <div style={{flexShrink:0,padding:"0 16px calc(env(safe-area-inset-bottom,16px) + 12px)",display:"flex",flexDirection:"column",gap:8}}>
-
-      {/* Mic row + waveform inline */}
       <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:C.surface,borderRadius:14,border:`1px solid ${C.border}`}}>
         <div onClick={isRec?rec.stop:rec.start} style={{width:42,height:42,borderRadius:"50%",flexShrink:0,background:isRec?"rgba(255,68,68,0.12)":isReq?"rgba(255,255,255,0.04)":"rgba(74,230,138,0.1)",border:`2px solid ${isRec?C.red:isReq?C.border:C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:isReq?"default":"pointer",transition:"all 0.3s"}}>
           <div style={{color:isRec?C.red:isReq?C.dim:C.accent}}>{isRec?<IcStop size={14}/>:<IcMic size={18}/>}</div>
@@ -701,17 +672,13 @@ function PhotoScreen({apiKey,imageBase64,imagePreview,onBack,onAdd}) {
         }
         {isRec&&<span style={{fontSize:12,color:C.red,fontWeight:600,flexShrink:0}}>{rec.fmtTime(rec.elapsed)}</span>}
       </div>
-
-      {/* Transcript — compact, 3 lines max */}
       <textarea
         style={{width:"100%",height:72,background:C.surface,border:`1px solid ${transcript?C.aMid:C.border}`,borderRadius:12,color:transcript?C.text:C.sub,fontSize:13,padding:"10px 14px",resize:"none",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",lineHeight:1.55}}
         placeholder={"Add details (optional) — ingredients, portions…"}
         value={transcript}
         onChange={e=>setTranscript(e.target.value)}
       />
-
       {error&&<p style={{color:C.red,fontSize:12,textAlign:"center",margin:"-4px 0"}}>{error}</p>}
-
       <button style={{width:"100%",background:C.accent,border:"none",borderRadius:13,color:C.bg,fontSize:15,fontWeight:700,padding:"14px",cursor:"pointer"}} onClick={submit}>
         Analyze & Add →
       </button>
@@ -720,7 +687,7 @@ function PhotoScreen({apiKey,imageBase64,imagePreview,onBack,onAdd}) {
 }
 
 // ─── Swipeable ingredient row ─────────────────────────────────────────────────
-function SwipeIngRow({ing,idx,editIdx,ingVal,setIngVal,setEditIdx,commitIng,onDelete,isLast}) {
+function SwipeIngRow({ing,idx,editIdx,ingVal,setIngVal,setEditIdx,commitIng,onDelete}) {
   const [swipeX,setSwipeX]=useState(0);
   const [swiping,setSwiping]=useState(false);
   const tx=useRef(0),ty=useRef(0);
@@ -799,7 +766,7 @@ function DetailScreen({meal,onBack,onUpdate,onDelete}) {
           const tot=next.reduce((s,x)=>s+x.calories,0);
           setTotalVal(String(tot));
           onUpdate({...meal,totalCalories:tot,ingredients:next});
-        }} isLast={idx===ings.length-1}/>)}
+        }}/>)}
       </div>}
     </div>
   </div>;
@@ -809,96 +776,102 @@ function DetailScreen({meal,onBack,onUpdate,onDelete}) {
 function App() {
   const [apiKey,setApiKey]=useState(()=>loadKey());
   const [screen,setScreen]=useState("home");
-// ─── App root ─────────────────────────────────────────────────────────────────
-function App() {
-  const [apiKey,setApiKey]=useState(()=>loadKey());
-  const [screen,setScreen]=useState("home");
   const [baseGoal,setBaseGoal]=useState(()=>loadBaseGoal());
   const [selected,setSelected]=useState(null);
   const [camImg,setCamImg]=useState({b64:null,preview:null});
 
-  // Single atomic state: dateKey + meals together
-  // Using one object means dateKey and meals are ALWAYS in sync
   const todayKey = fmtKey(new Date());
-  const [state,setState]=useState(()=>({
-    dateKey: todayKey,
-    meals: loadMeals(todayKey)
-  }));
 
-  const {dateKey, meals} = state;
+  // ── FIX: dateKey lives in plain state, meals are always read/written via
+  // saveMeals(dateKey, ...) using the CURRENT dateKey at call time — not
+  // inside a setState updater where the value could be stale.
+  const [dateKey, setDateKey] = useState(todayKey);
+  const [meals, setMeals] = useState(() => loadMeals(todayKey));
+
+  // Keep a ref so async callbacks (addMeal after AI responds) always see the
+  // current dateKey even if the user navigated while the request was in-flight.
+  const dateKeyRef = useRef(dateKey);
+  useEffect(() => { dateKeyRef.current = dateKey; }, [dateKey]);
+
   const burned = meals.filter(m=>m.type==="workout").reduce((s,m)=>s+m.totalCalories,0);
   const effectiveGoal = baseGoal + burned;
 
-  // Change date: save current meals first, then load new day
+  // Change date: flush current meals to storage first, then load the new day.
   const changeDate = (d) => {
     const newKey = fmtKey(d);
-    setState(prev => {
-      // Save current day before leaving
-      saveMeals(prev.dateKey, prev.meals);
-      const loaded = loadMeals(newKey);
-      return { dateKey: newKey, meals: loaded };
-    });
+    if (newKey === dateKey) return;
+    // Save current day synchronously before switching
+    saveMeals(dateKey, meals);
+    dateKeyRef.current = newKey;
+    setDateKey(newKey);
+    setMeals(loadMeals(newKey));
   };
 
-  // All mutations use setState updater — prev.dateKey is always correct
   const addMeal = m => {
     recordFoodItems(m.ingredients);
-    setState(prev => {
-      const next = [...prev.meals, m];
-      saveMeals(prev.dateKey, next);
-      return { ...prev, meals: next };
+    // Use ref so this is correct even if user navigated during AI call
+    const key = dateKeyRef.current;
+    setMeals(prev => {
+      const next = [...prev, m];
+      saveMeals(key, next);
+      return next;
     });
     setScreen("home");
   };
 
   const addWorkout = w => {
-    setState(prev => {
-      const next = [...prev.meals, w];
-      saveMeals(prev.dateKey, next);
-      return { ...prev, meals: next };
+    const key = dateKeyRef.current;
+    setMeals(prev => {
+      const next = [...prev, w];
+      saveMeals(key, next);
+      return next;
     });
   };
 
   const updateMeal = m => {
     recordFoodItems(m.ingredients);
-    setState(prev => {
-      const next = prev.meals.map(x=>x.id===m.id?m:x);
-      saveMeals(prev.dateKey, next);
-      return { ...prev, meals: next };
+    const key = dateKeyRef.current;
+    setMeals(prev => {
+      const next = prev.map(x=>x.id===m.id?m:x);
+      saveMeals(key, next);
+      return next;
     });
     setSelected(m);
   };
 
   const deleteMeal = id => {
-    setState(prev => {
-      const next = prev.meals.filter(x=>x.id!==id);
-      saveMeals(prev.dateKey, next);
-      return { ...prev, meals: next };
+    const key = dateKeyRef.current;
+    setMeals(prev => {
+      const next = prev.filter(x=>x.id!==id);
+      saveMeals(key, next);
+      return next;
     });
     setScreen("home");
   };
 
   const selectMeal = m => {
     if(m._quickEdit){
-      setState(prev => {
-        const next = prev.meals.map(x=>x.id===m.id?{...x,totalCalories:m._newCal}:x);
-        saveMeals(prev.dateKey, next);
-        return { ...prev, meals: next };
+      const key = dateKeyRef.current;
+      setMeals(prev => {
+        const next = prev.map(x=>x.id===m.id?{...x,totalCalories:m._newCal}:x);
+        saveMeals(key, next);
+        return next;
       });
       return;
     }
     if(m._delete){
-      setState(prev => {
-        const next = prev.meals.filter(x=>x.id!==m.id);
-        saveMeals(prev.dateKey, next);
-        return { ...prev, meals: next };
+      const key = dateKeyRef.current;
+      setMeals(prev => {
+        const next = prev.filter(x=>x.id!==m.id);
+        saveMeals(key, next);
+        return next;
       });
       return;
     }
     setSelected(m); setScreen("detail");
   };
 
-  if(!apiKey)return <ApiKeyScreen onSave={k=>{saveKey(k);setApiKey(k);}}/>;
+  if(!apiKey) return <ApiKeyScreen onSave={k=>{saveKey(k);setApiKey(k);}}/>;
 
   return <div style={{height:"100%"}}>
     {screen==="home"&&<HomeScreen
@@ -906,10 +879,12 @@ function App() {
       onOpenVoice={()=>setScreen("voice")}
       onAddWorkout={addWorkout}
       onSelectMeal={selectMeal}
-      meals={meals} goal={effectiveGoal} baseGoal={baseGoal}
-      setGoal={g=>{setBaseGoal(g);saveBaseGoal(g);saveGoal(g+burned);}}
-      setBaseGoal={setBaseGoal}
-      date={new Date(dateKey+"T12:00:00")} setDate={changeDate}
+      meals={meals}
+      goal={effectiveGoal}
+      baseGoal={baseGoal}
+      setBaseGoal={n=>{setBaseGoal(n);saveBaseGoal(n);}}
+      date={new Date(dateKey+"T12:00:00")}
+      setDate={changeDate}
     />}
     {screen==="camera"&&<PhotoScreen apiKey={apiKey} imageBase64={camImg.b64} imagePreview={camImg.preview} onBack={()=>setScreen("home")} onAdd={addMeal}/>}
     {screen==="voice"&&<VoiceScreen apiKey={apiKey} onBack={()=>setScreen("home")} onAdd={addMeal}/>}

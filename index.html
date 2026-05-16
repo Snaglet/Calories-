@@ -809,54 +809,52 @@ function DetailScreen({meal,onBack,onUpdate,onDelete}) {
 function App() {
   const [apiKey,setApiKey]=useState(()=>loadKey());
   const [screen,setScreen]=useState("home");
-  // dateKey drives everything — meals always read fresh from localStorage
+  // dateKey drives date navigation
   const [dateKey,setDateKey]=useState(()=>fmtKey(new Date()));
   const [baseGoal,setBaseGoal]=useState(()=>loadBaseGoal());
   const [goal,setGoal]=useState(()=>loadGoal());
   const [selected,setSelected]=useState(null);
   const [camImg,setCamImg]=useState({b64:null,preview:null});
-  // Render counter forces re-render when meals change, meals always from localStorage
-  const [tick,setTick]=useState(0);
-  const bump = ()=>setTick(t=>t+1);
 
-  // meals always read fresh — never stale
-  const meals = loadMeals(dateKey);
+  // meals is real React state — always in sync with what's displayed
+  // localStorage is written immediately on every change alongside setState
+  const [meals,setMeals]=useState(()=>loadMeals(fmtKey(new Date())));
 
-  // Recalculate goal when meals or baseGoal change
+  // Derived values
   const burned = meals.filter(m=>m.type==="workout").reduce((s,m)=>s+m.totalCalories,0);
   const effectiveGoal = baseGoal + burned;
 
+  // Save meals to localStorage AND update state atomically
+  const save = (key, next) => { saveMeals(key, next); return next; };
+
+  // Date navigation — load the right day's meals from localStorage
   const changeDate = (d) => {
     const key = fmtKey(d);
     setDateKey(key);
-    bump();
+    setMeals(loadMeals(key));
   };
 
-  const mutateMeals = (fn) => {
-    const current = loadMeals(dateKey);
-    const next = fn(current);
-    saveMeals(dateKey, next);
-    bump();
-  };
-
-  const addMeal=m=>{
+  // All mutations: update state + save to localStorage for current dateKey
+  const addMeal = m => {
     recordFoodItems(m.ingredients);
-    mutateMeals(p=>[...p,m]);
+    setMeals(p => save(dateKey, [...p, m]));
     setScreen("home");
   };
-  const addWorkout=w=>{ mutateMeals(p=>[...p,w]); };
-  const updateMeal=m=>{
+  const addWorkout = w => {
+    setMeals(p => save(dateKey, [...p, w]));
+  };
+  const updateMeal = m => {
     recordFoodItems(m.ingredients);
-    mutateMeals(p=>p.map(x=>x.id===m.id?m:x));
+    setMeals(p => save(dateKey, p.map(x=>x.id===m.id?m:x)));
     setSelected(m);
   };
-  const deleteMeal=id=>{
-    mutateMeals(p=>p.filter(x=>x.id!==id));
+  const deleteMeal = id => {
+    setMeals(p => save(dateKey, p.filter(x=>x.id!==id)));
     setScreen("home");
   };
-  const selectMeal=m=>{
-    if(m._quickEdit){ mutateMeals(p=>p.map(x=>x.id===m.id?{...x,totalCalories:m._newCal}:x)); return; }
-    if(m._delete){ mutateMeals(p=>p.filter(x=>x.id!==m.id)); return; }
+  const selectMeal = m => {
+    if(m._quickEdit){ setMeals(p => save(dateKey, p.map(x=>x.id===m.id?{...x,totalCalories:m._newCal}:x))); return; }
+    if(m._delete){ setMeals(p => save(dateKey, p.filter(x=>x.id!==m.id))); return; }
     setSelected(m); setScreen("detail");
   };
 

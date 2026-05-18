@@ -76,7 +76,8 @@ function detectMediaType(base64) {
 }
 
 // ─── OpenAI GPT-4o — best vision model for food/barcode analysis ──────────────
-async function analyze(apiKey, imageBase64, description) {
+// imageData = { base64: string, mimeType: string } | null
+async function analyze(apiKey, imageData, description) {
   if (!apiKey) throw new Error("No API key — tap ⚙️ Settings to add your OpenAI key");
 
   const sysPrompt = `You are an expert nutritionist and food label reader with access to USDA databases, restaurant nutrition facts, and packaged food data.
@@ -99,19 +100,20 @@ ACCURACY RULES:
 - Never return 0 calories for any real food item.
 - totalCalories MUST equal the sum of all ingredient calories.
 - Estimate totalProteinG and proteinG for every ingredient.
+- For emoji: pick ONE emoji that best represents the main/primary food item described or shown.
 - Return ONLY raw JSON. No markdown fences, no explanation text, nothing else.`;
 
-  const userPrompt = imageBase64
-    ? `Analyze this image carefully.${description ? ` User added: "${description}".` : ""} If you see a barcode or package, identify the exact product and use its real nutrition facts. If it's a plate of food, estimate actual portions shown. Return this exact JSON shape: {"mealTitle":"...","totalCalories":0,"totalProteinG":0,"ingredients":[{"name":"...","calories":0,"proteinG":0}],"summary":"..."}`
-    : `The user described their meal: "${description}". Use real brand/USDA data and multiply by any stated quantity. Return this exact JSON shape: {"mealTitle":"...","totalCalories":0,"totalProteinG":0,"ingredients":[{"name":"...","calories":0,"proteinG":0}],"summary":"..."}`;
+  const userPrompt = imageData
+    ? `Analyze this image carefully.${description ? ` User added: "${description}".` : ""} If you see a barcode or package, identify the exact product and use its real nutrition facts. If it's a plate of food, estimate actual portions shown. Return this exact JSON: {"mealTitle":"...","totalCalories":0,"totalProteinG":0,"emoji":"🍔","ingredients":[{"name":"...","calories":0,"proteinG":0}],"summary":"..."}`
+    : `The user described their meal: "${description}". Use real brand/USDA data and multiply by any stated quantity. Return this exact JSON: {"mealTitle":"...","totalCalories":0,"totalProteinG":0,"emoji":"🍔","ingredients":[{"name":"...","calories":0,"proteinG":0}],"summary":"..."}`;
 
-  // OpenAI image_url format with high detail for best barcode/food recognition
   const contentArr = [];
-  if (imageBase64) {
+  if (imageData) {
+    // Use the actual mime type captured from the file — never hardcode image/jpeg
     contentArr.push({
       type: "image_url",
       image_url: {
-        url: `data:image/jpeg;base64,${imageBase64}`,
+        url: `data:${imageData.mimeType};base64,${imageData.base64}`,
         detail: "high"
       }
     });
@@ -131,7 +133,7 @@ ACCURACY RULES:
         { role: "user", content: contentArr }
       ],
       max_tokens: 800,
-      temperature: 0.1  // low temp = more consistent, accurate estimates
+      temperature: 0.1
     })
   });
 
@@ -140,6 +142,7 @@ ACCURACY RULES:
     try { const e = await res.json(); msg = e.error?.message || msg; } catch {}
     if (res.status === 401) throw new Error("Invalid API key — tap ⚙️ to update it");
     if (res.status === 400) throw new Error(`Bad request: ${msg}`);
+    if (res.status === 429) throw new Error("Rate limit — wait a moment and try again");
     throw new Error(msg);
   }
 
@@ -274,7 +277,7 @@ function MealCard({meal,onTap,onQuickEdit,onDelete}) {
       onClick={()=>{if(!editing&&swipeX===0)onTap(meal);}}
       onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
       {meal.imageBase64
-        ?<img src={`data:image/jpeg;base64,${meal.imageBase64}`} style={{width:54,height:54,borderRadius:12,objectFit:"cover",flexShrink:0}} alt=""/>
+        ?<img src={`data:${meal.imageMime||"image/jpeg"};base64,${meal.imageBase64}`} style={{width:54,height:54,borderRadius:12,objectFit:"cover",flexShrink:0}} alt=""/>
         :<div style={{width:54,height:54,borderRadius:12,background:isWorkout?C.oDim:C.hover,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:22}}>{isWorkout?"🔥":meal.emoji||"🍽️"}</span></div>
       }
       <div style={{flex:1,minWidth:0}}>
@@ -490,7 +493,13 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,onOpenSe
 
     <div style={{display:"flex",gap:10,padding:"0 16px 18px"}}>
       <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"15px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,color:C.text}} onClick={()=>fileRef.current.click()}><IcCamera/></button>
-      <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>onOpenCamera(ev.target.result.split(",")[1],ev.target.result);r.readAsDataURL(f);e.target.value="";}}/>
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{
+        const f=e.target.files[0]; if(!f) return;
+        const mime=f.type||"image/jpeg";
+        const r=new FileReader();
+        r.onload=ev=>{ onOpenCamera({base64:ev.target.result.split(",")[1], mimeType:mime}, ev.target.result); };
+        r.readAsDataURL(f); e.target.value="";
+      }}/>
       <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"15px",background:C.aDim,border:`1px solid ${C.aMid}`,borderRadius:16,color:C.accent}} onClick={onOpenVoice}><IcMic/></button>
       <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"15px",background:C.oDim,border:`1px solid ${C.oMid}`,borderRadius:16,color:C.orange,fontSize:22}} onClick={()=>setShowWorkout(true)}>🔥</button>
     </div>
@@ -588,7 +597,7 @@ function VoiceScreen({apiKey,onBack,onAdd}) {
     try {
       const r = await analyze(apiKey, null, transcript);
       const now = new Date();
-      onAdd({id:uid(),mealTitle:r.mealTitle,totalCalories:r.totalCalories,totalProteinG:r.totalProteinG||0,ingredients:r.ingredients||[],summary:r.summary,imageBase64:null,time:now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),addedAt:now.getTime(),emoji:EMOJIS[Math.floor(Math.random()*EMOJIS.length)]});
+      onAdd({id:uid(),mealTitle:r.mealTitle,totalCalories:r.totalCalories,totalProteinG:r.totalProteinG||0,ingredients:r.ingredients||[],summary:r.summary,imageBase64:null,time:now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),addedAt:now.getTime(),emoji:r.emoji||"🍽️"});
     } catch(e) { setError(e.message||"Error — check Settings ⚙️"); setSubmitting(false); }
   };
 
@@ -633,7 +642,7 @@ function VoiceScreen({apiKey,onBack,onAdd}) {
 }
 
 // ─── Photo screen ─────────────────────────────────────────────────────────────
-function PhotoScreen({apiKey,imageBase64,imagePreview,onBack,onAdd}) {
+function PhotoScreen({apiKey,imageData,imagePreview,onBack,onAdd}) {
   const [note,setNote]=useState("");
   const [error,setError]=useState("");
   const [submitting,setSubmitting]=useState(false);
@@ -648,14 +657,15 @@ function PhotoScreen({apiKey,imageBase64,imagePreview,onBack,onAdd}) {
     setSubmitting(true);
     setError("");
     try {
-      const r = await analyze(apiKey, imageBase64, note || undefined);
+      const r = await analyze(apiKey, imageData, note || undefined);
       const now = new Date();
       onAdd({
         id:uid(), mealTitle:r.mealTitle, totalCalories:r.totalCalories,
         totalProteinG:r.totalProteinG||0, ingredients:r.ingredients||[],
-        summary:r.summary, imageBase64,
+        summary:r.summary, imageBase64:imageData?.base64||null,
+        imageMime:imageData?.mimeType||"image/jpeg",
         time:now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),
-        addedAt:now.getTime(), emoji:null
+        addedAt:now.getTime(), emoji:r.emoji||null
       });
     } catch(e) {
       setError(e.message || "Analysis failed — check Settings ⚙️");
@@ -663,7 +673,7 @@ function PhotoScreen({apiKey,imageBase64,imagePreview,onBack,onAdd}) {
     }
   };
 
-  if (submitting) return <Spinner text="Analyzing with Claude…"/>;
+  if (submitting) return <Spinner text="Analyzing with GPT-4o…"/>;
 
   return <div style={{height:"100%",background:C.bg,display:"flex",flexDirection:"column"}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(env(safe-area-inset-top,44px) + 8px) 16px 8px",flexShrink:0}}>
@@ -736,7 +746,7 @@ function DetailScreen({meal,onBack,onUpdate,onDelete}) {
       <span style={{fontSize:16,fontWeight:700,color:C.text}}>{isWorkout?"Workout":"Meal Details"}</span>
       <button style={{width:44,height:44,borderRadius:12,background:C.rDim,border:`1px solid ${C.rMid}`,color:C.red,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>onDelete(meal.id)}><IcTrash/></button>
     </div>
-    {!isWorkout&&(meal.imageBase64?<img src={`data:image/jpeg;base64,${meal.imageBase64}`} style={{width:"100%",height:250,objectFit:"cover"}} alt=""/>:<div style={{width:"100%",height:180,background:C.surface,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:56}}>{meal.emoji||"🍽️"}</span></div>)}
+    {!isWorkout&&(meal.imageBase64?<img src={`data:${meal.imageMime||"image/jpeg"};base64,${meal.imageBase64}`} style={{width:"100%",height:250,objectFit:"cover"}} alt=""/>:<div style={{width:"100%",height:180,background:C.surface,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:56}}>{meal.emoji||"🍽️"}</span></div>)}
     {isWorkout&&<div style={{width:"100%",height:140,background:C.oDim,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:64}}>🔥</span></div>}
     <div style={{padding:"20px 20px 40px"}}>
       <h2 style={{fontSize:22,fontWeight:800,color:isWorkout?C.orange:C.text,marginBottom:6,letterSpacing:"-0.5px"}}>{meal.mealTitle}</h2>
@@ -769,7 +779,7 @@ function App() {
   const [screen,setScreen]=useState("home");
   const [baseGoal,setBaseGoal]=useState(()=>loadBaseGoal());
   const [selected,setSelected]=useState(null);
-  const [camImg,setCamImg]=useState({b64:null,preview:null});
+  const [camImg,setCamImg]=useState({imageData:null,preview:null});
   const dateKeyRef=useRef(fmtKey(new Date()));
   const [,forceRender]=useState(0);
   const bump=()=>forceRender(n=>n+1);
@@ -793,7 +803,7 @@ function App() {
 
   return <div style={{height:"100%"}}>
     {screen==="home"&&<HomeScreen
-      onOpenCamera={(b64,preview)=>{setCamImg({b64,preview});setScreen("camera");}}
+      onOpenCamera={(imageData,preview)=>{setCamImg({imageData,preview});setScreen("camera");}}
       onOpenVoice={()=>setScreen("voice")}
       onAddWorkout={addWorkout} onSelectMeal={selectMeal}
       onOpenSettings={()=>setScreen("settings")}
@@ -801,7 +811,7 @@ function App() {
       setBaseGoal={n=>{setBaseGoal(n);saveBaseGoal(n);}}
       date={new Date(dateKey+"T12:00:00")} setDate={changeDate}
     />}
-    {screen==="camera"&&<PhotoScreen apiKey={apiKey} imageBase64={camImg.b64} imagePreview={camImg.preview} onBack={()=>setScreen("home")} onAdd={addMeal}/>}
+    {screen==="camera"&&<PhotoScreen apiKey={apiKey} imageData={camImg.imageData} imagePreview={camImg.preview} onBack={()=>setScreen("home")} onAdd={addMeal}/>}
     {screen==="voice"&&<VoiceScreen apiKey={apiKey} onBack={()=>setScreen("home")} onAdd={addMeal}/>}
     {screen==="detail"&&selected&&<DetailScreen meal={selected} onBack={()=>setScreen("home")} onUpdate={updateMeal} onDelete={deleteMeal}/>}
     {screen==="settings"&&<SettingsScreen apiKey={apiKey} onSave={saveApiKey} onBack={()=>setScreen("home")}/>}

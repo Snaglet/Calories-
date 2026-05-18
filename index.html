@@ -495,10 +495,24 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,onOpenSe
       <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"15px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,color:C.text}} onClick={()=>fileRef.current.click()}><IcCamera/></button>
       <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{
         const f=e.target.files[0]; if(!f) return;
-        const mime=f.type||"image/jpeg";
-        const r=new FileReader();
-        r.onload=ev=>{ onOpenCamera({base64:ev.target.result.split(",")[1], mimeType:mime}, ev.target.result); };
-        r.readAsDataURL(f); e.target.value="";
+        const reader=new FileReader();
+        reader.onload=ev=>{
+          const img=new Image();
+          img.onload=()=>{
+            // Resize to max 1600px and convert to JPEG — handles HEIC, PNG, WebP, oversized shots
+            // OpenAI vision only accepts jpeg/png/webp/gif; HEIC always returns 400
+            const MAX=1600;
+            let w=img.width, h=img.height;
+            if(w>MAX||h>MAX){ const s=Math.min(MAX/w,MAX/h); w=Math.round(w*s); h=Math.round(h*s); }
+            const canvas=document.createElement("canvas");
+            canvas.width=w; canvas.height=h;
+            canvas.getContext("2d").drawImage(img,0,0,w,h);
+            const dataUrl=canvas.toDataURL("image/jpeg",0.88);
+            onOpenCamera({base64:dataUrl.split(",")[1], mimeType:"image/jpeg"}, dataUrl);
+          };
+          img.src=ev.target.result;
+        };
+        reader.readAsDataURL(f); e.target.value="";
       }}/>
       <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"15px",background:C.aDim,border:`1px solid ${C.aMid}`,borderRadius:16,color:C.accent}} onClick={onOpenVoice}><IcMic/></button>
       <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"15px",background:C.oDim,border:`1px solid ${C.oMid}`,borderRadius:16,color:C.orange,fontSize:22}} onClick={()=>setShowWorkout(true)}>🔥</button>
@@ -654,8 +668,8 @@ function PhotoScreen({apiKey,imageData,imagePreview,onBack,onAdd}) {
   // Submit is completely independent: always passes imageBase64 directly to Claude
   const submit = async () => {
     speech.stop();
-    setSubmitting(true);
     setError("");
+    setSubmitting(true);
     try {
       const r = await analyze(apiKey, imageData, note || undefined);
       const now = new Date();
@@ -673,7 +687,8 @@ function PhotoScreen({apiKey,imageData,imagePreview,onBack,onAdd}) {
     }
   };
 
-  if (submitting) return <Spinner text="Analyzing with GPT-4o…"/>;
+  // Show spinner while submitting, but if error occurs drop back to form with error visible
+  if (submitting && !error) return <Spinner text="Analyzing with GPT-4o…"/>;
 
   return <div style={{height:"100%",background:C.bg,display:"flex",flexDirection:"column"}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(env(safe-area-inset-top,44px) + 8px) 16px 8px",flexShrink:0}}>
@@ -700,9 +715,11 @@ function PhotoScreen({apiKey,imageData,imagePreview,onBack,onAdd}) {
       <textarea style={{width:"100%",height:68,background:C.surface,border:`1px solid ${note?C.aMid:C.border}`,borderRadius:12,color:note?C.text:C.sub,fontSize:13,padding:"10px 14px",resize:"none",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",lineHeight:1.55}}
         placeholder="Add notes (optional) — ingredients, portions, brand…"
         value={note} onChange={e=>setNote(e.target.value)}/>
-      {error&&<p style={{color:C.red,fontSize:12,textAlign:"center",lineHeight:1.5}}>{error}</p>}
+      {error&&<div style={{background:C.rDim,border:`1px solid ${C.rMid}`,borderRadius:12,padding:"12px 14px",marginBottom:2}}>
+        <p style={{color:C.red,fontSize:13,fontWeight:600,lineHeight:1.5}}>⚠ {error}</p>
+      </div>}
       <button style={{width:"100%",background:C.accent,border:"none",borderRadius:13,color:C.bg,fontSize:15,fontWeight:700,padding:"14px"}} onClick={submit}>
-        Analyze & Add →
+        {error?"Retry →":"Analyze & Add →"}
       </button>
     </div>
   </div>;

@@ -75,51 +75,63 @@ function detectMediaType(base64) {
   return "image/jpeg";
 }
 
-// ─── Anthropic API — correct image format for Claude ─────────────────────────
+// ─── OpenAI GPT-4o — best vision model for food/barcode analysis ──────────────
 async function analyze(apiKey, imageBase64, description) {
-  if (!apiKey) throw new Error("No API key — tap ⚙️ Settings to add your Anthropic key");
+  if (!apiKey) throw new Error("No API key — tap ⚙️ Settings to add your OpenAI key");
 
-  const sysPrompt = `You are a precise nutrition expert. Estimate calories using USDA data, brand nutrition facts, and food label knowledge.
-RULES:
-- Multiply per-unit calories by stated quantity ("two eggs" = 2x, "3 slices" = 3x)
-- Use real brand data: Big Mac=550cal, Whopper=660cal, Slim Jim Original=80cal each, Bubba Burger=420cal
-- For photos estimate the ACTUAL visible portion, not default serving size
-- Never return 0 calories for real food
-- totalCalories must equal sum of ingredient calories
-- Also estimate totalProteinG and per-ingredient proteinG
-- Return ONLY valid JSON, no markdown, no explanation`;
+  const sysPrompt = `You are an expert nutritionist and food label reader with access to USDA databases, restaurant nutrition facts, and packaged food data.
+
+BARCODE & PACKAGING:
+- If you see a barcode, UPC, or food package: read ALL visible text including brand name, product name, flavor, size, and any nutrition panel. Use the EXACT published nutrition facts for that specific product — not a generic estimate.
+- Examples: Fairlife 2% milk 11.5oz = 170cal/13g protein. Premier Protein shake = 160cal/30g protein. Kind bar peanut butter = 200cal/7g protein.
+
+RESTAURANT & BRAND FOOD:
+- Use real published nutrition data. Examples: Big Mac = 550cal/25g protein. Chipotle chicken burrito bowl (standard) ≈ 800cal/50g protein. Starbucks grande latte whole milk = 220cal/12g protein.
+
+HOMEMADE / PLATED FOOD:
+- Estimate the ACTUAL portion size visible in the photo. Look for visual cues: plate size, utensils, food density.
+- Never default to a "standard serving" — judge what's actually in the image.
+
+QUANTITIES:
+- If user says "two", "3x", "a dozen" etc, multiply all values by that number. Never return single-unit values when multiple are stated.
+
+ACCURACY RULES:
+- Never return 0 calories for any real food item.
+- totalCalories MUST equal the sum of all ingredient calories.
+- Estimate totalProteinG and proteinG for every ingredient.
+- Return ONLY raw JSON. No markdown fences, no explanation text, nothing else.`;
 
   const userPrompt = imageBase64
-    ? `Analyze this meal photo${description ? `. Extra context: "${description}"` : ""}. Return JSON: {"mealTitle":"...","totalCalories":0,"totalProteinG":0,"ingredients":[{"name":"...","calories":0,"proteinG":0}],"summary":"..."}`
-    : `User described: "${description}". Return JSON: {"mealTitle":"...","totalCalories":0,"totalProteinG":0,"ingredients":[{"name":"...","calories":0,"proteinG":0}],"summary":"..."}`;
+    ? `Analyze this image carefully.${description ? ` User added: "${description}".` : ""} If you see a barcode or package, identify the exact product and use its real nutrition facts. If it's a plate of food, estimate actual portions shown. Return this exact JSON shape: {"mealTitle":"...","totalCalories":0,"totalProteinG":0,"ingredients":[{"name":"...","calories":0,"proteinG":0}],"summary":"..."}`
+    : `The user described their meal: "${description}". Use real brand/USDA data and multiply by any stated quantity. Return this exact JSON shape: {"mealTitle":"...","totalCalories":0,"totalProteinG":0,"ingredients":[{"name":"...","calories":0,"proteinG":0}],"summary":"..."}`;
 
-  // Build content using Anthropic's image format (NOT OpenAI image_url format)
+  // OpenAI image_url format with high detail for best barcode/food recognition
   const contentArr = [];
   if (imageBase64) {
     contentArr.push({
-      type: "image",
-      source: {
-        type: "base64",
-        media_type: detectMediaType(imageBase64),
-        data: imageBase64
+      type: "image_url",
+      image_url: {
+        url: `data:image/jpeg;base64,${imageBase64}`,
+        detail: "high"
       }
     });
   }
   contentArr.push({ type: "text", text: userPrompt });
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true"
+      "Authorization": `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      model: "claude-opus-4-5",
-      max_tokens: 1024,
-      system: sysPrompt,
-      messages: [{ role: "user", content: contentArr }]
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: sysPrompt },
+        { role: "user", content: contentArr }
+      ],
+      max_tokens: 800,
+      temperature: 0.1  // low temp = more consistent, accurate estimates
     })
   });
 
@@ -132,7 +144,7 @@ RULES:
   }
 
   const data = await res.json();
-  const rawText = data.content?.find(b => b.type === "text")?.text || "";
+  const rawText = data.choices?.[0]?.message?.content || "";
   const cleaned = rawText.trim().replace(/```json\s*/gi,"").replace(/```/g,"").trim();
   try { return JSON.parse(cleaned); }
   catch {
@@ -341,7 +353,7 @@ function SettingsScreen({apiKey,onSave,onBack}) {
     <div style={{padding:"0 16px",display:"flex",flexDirection:"column",gap:14}}>
       {/* API Key */}
       <div style={{background:C.surface,borderRadius:18,border:`1px solid ${C.border}`,padding:"18px 18px 16px"}}>
-        <p style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:6}}>Anthropic API Key</p>
+        <p style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:6}}>OpenAI API Key</p>
         {masked
           ? <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,padding:"10px 12px",background:C.aDim,borderRadius:10,border:`1px solid ${C.aMid}`}}>
               <span style={{fontSize:11,color:C.accent,fontWeight:600}}>✓ Key saved:</span>
@@ -350,9 +362,9 @@ function SettingsScreen({apiKey,onSave,onBack}) {
           : <p style={{fontSize:12,color:C.red,marginBottom:12,fontWeight:600}}>⚠ No key set — meals cannot be analyzed</p>
         }
         <p style={{fontSize:12,color:C.sub,lineHeight:1.6,marginBottom:12}}>
-          Get a key at <span style={{color:C.accent}}>console.anthropic.com</span>. It's stored only on this device and sent directly to Anthropic.
+          Get a key at <span style={{color:C.accent}}>platform.openai.com/api-keys</span>. Stored only on this device and sent directly to OpenAI.
         </p>
-        <input type="password" placeholder={masked?"Enter new key to replace…":"sk-ant-..."} value={val}
+        <input type="password" placeholder={masked?"Enter new key to replace…":"sk-..."} value={val}
           onChange={e=>{setVal(e.target.value);setErr("");setSaved(false);}}
           onKeyDown={e=>e.key==="Enter"&&submit()}
           style={{width:"100%",background:C.hover,border:`1px solid ${err?C.red:C.border}`,borderRadius:12,color:C.text,fontSize:14,padding:"13px 14px",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",marginBottom:8}}/>
@@ -374,7 +386,7 @@ function SettingsScreen({apiKey,onSave,onBack}) {
       <div style={{background:C.surface,borderRadius:18,border:`1px solid ${C.border}`,padding:"18px"}}>
         <p style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:8}}>About Just Calories</p>
         <p style={{fontSize:12,color:C.sub,lineHeight:1.7}}>
-          Photos are analyzed by Claude's vision model. Voice descriptions are processed locally by your browser. All meal data is stored on your device only and never uploaded.
+          Photos are analyzed by GPT-4o vision — including barcodes and food labels. Voice descriptions are processed locally by your browser. All meal data is stored on your device only.
         </p>
       </div>
     </div>
@@ -390,12 +402,12 @@ function ApiKeyScreen({onSave}) {
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"40px 28px",width:"100%",maxWidth:380}}>
       <span style={{fontSize:52,marginBottom:12}}>⚡</span>
       <h1 style={{fontSize:32,fontWeight:800,color:C.text,textAlign:"center",lineHeight:1.15,letterSpacing:"-1px",marginBottom:6}}>Just Calories</h1>
-      <p style={{color:C.accent,fontSize:13,fontWeight:600,marginBottom:32,marginTop:6}}>Powered by Claude Vision</p>
+      <p style={{color:C.accent,fontSize:13,fontWeight:600,marginBottom:32,marginTop:6}}>Powered by GPT-4o Vision</p>
       <div style={{width:"100%",background:C.surface,borderRadius:20,padding:"24px 20px",border:`1px solid ${C.border}`}}>
-        <p style={{color:C.sub,fontSize:13,lineHeight:1.7,textAlign:"center",marginBottom:4}}>Enter your Anthropic API key to get started.</p>
-        <p style={{color:C.dim,fontSize:12,lineHeight:1.6,textAlign:"center",marginBottom:16}}>Get one at <span style={{color:C.accent}}>console.anthropic.com</span></p>
+        <p style={{color:C.sub,fontSize:13,lineHeight:1.7,textAlign:"center",marginBottom:4}}>Enter your OpenAI API key to get started.</p>
+        <p style={{color:C.dim,fontSize:12,lineHeight:1.6,textAlign:"center",marginBottom:16}}>Get one at <span style={{color:C.accent}}>platform.openai.com/api-keys</span></p>
         <input style={{width:"100%",background:C.hover,border:`1px solid ${err?C.red:C.border}`,borderRadius:12,color:C.text,fontSize:15,padding:"14px 16px",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif"}}
-          type="password" placeholder="sk-ant-..." value={val} onChange={e=>{setVal(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+          type="password" placeholder="sk-..." value={val} onChange={e=>{setVal(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()}/>
         {err&&<p style={{color:C.red,fontSize:12,marginTop:6}}>{err}</p>}
         <button style={{width:"100%",background:C.accent,border:"none",borderRadius:14,color:C.bg,fontSize:15,fontWeight:700,padding:"16px",marginTop:14}} onClick={submit}>Get Started →</button>
       </div>

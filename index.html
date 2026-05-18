@@ -20,8 +20,7 @@ html,body{height:100%;background:#0A0A0F;font-family:'Plus Jakarta Sans',sans-se
 @keyframes ripple{0%{box-shadow:0 0 0 0 rgba(255,68,68,0.4)}100%{box-shadow:0 0 0 20px rgba(255,68,68,0)}}
 textarea::placeholder{color:rgba(240,240,248,0.28);font-family:'Plus Jakarta Sans',sans-serif;font-size:13px}
 input::placeholder{color:rgba(240,240,248,0.3)}
-button{font-family:'Plus Jakarta Sans',sans-serif}
-span{text-decoration:none;}
+button{font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer}
 </style>
 </head>
 <body>
@@ -47,92 +46,115 @@ const loadWeights = () => { try { return JSON.parse(ls.get("jct:weights") || "[]
 const saveWeights = w => ls.set("jct:weights", JSON.stringify(w));
 const loadWorkoutLabels = () => { try { return JSON.parse(ls.get("jct:wlabels") || "[]"); } catch { return []; } };
 const saveWorkoutLabels = arr => ls.set("jct:wlabels", JSON.stringify(arr));
+const loadFoodHistory = () => { try { return JSON.parse(ls.get("jct:foodhist") || "[]"); } catch { return []; } };
+const saveFoodHistory = arr => ls.set("jct:foodhist", JSON.stringify(arr));
 
-// ─── FIX 1: Persistent microphone stream ──────────────────────────────────────
-// We keep ONE shared audio stream alive for the app's lifetime so the browser
-// never needs to prompt for permission again after the first grant.
+// ─── Persistent mic stream (one permission prompt ever) ───────────────────────
 let _sharedStream = null;
 async function getSharedMicStream() {
-  // If we already have a live stream, reuse it
-  if (_sharedStream && _sharedStream.active) {
-    return _sharedStream;
-  }
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-  _sharedStream = stream;
-  return stream;
+  if (_sharedStream && _sharedStream.active) return _sharedStream;
+  _sharedStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  return _sharedStream;
 }
 
-// ─── Date ─────────────────────────────────────────────────────────────────────
+// ─── Date helpers ─────────────────────────────────────────────────────────────
 const fmtKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 const fmtDisplay = d => d.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"});
 const isToday = d => fmtKey(d) === fmtKey(new Date());
 
-// ─── OpenAI helpers ───────────────────────────────────────────────────────────
+// ─── Detect image type from base64 bytes ──────────────────────────────────────
+function detectMediaType(base64) {
+  try {
+    const bin = atob(base64.slice(0, 16));
+    const b = i => bin.charCodeAt(i);
+    if (b(0)===0xFF && b(1)===0xD8) return "image/jpeg";
+    if (b(0)===0x89 && b(1)===0x50) return "image/png";
+    if (b(0)===0x47 && b(1)===0x49) return "image/gif";
+    if (b(0)===0x52 && b(1)===0x49) return "image/webp";
+  } catch {}
+  return "image/jpeg";
+}
+
+// ─── Anthropic API — correct image format for Claude ─────────────────────────
 async function analyze(apiKey, imageBase64, description) {
-  const content = [];
-  if (imageBase64) content.push({type:"image_url",image_url:{url:`data:image/jpeg;base64,${imageBase64}`,detail:"high"}});
+  if (!apiKey) throw new Error("No API key — tap ⚙️ Settings to add your Anthropic key");
 
-  const sysPrompt = `You are a precise nutrition expert. Your job is to estimate calories as accurately as possible using USDA data, restaurant/brand published nutrition facts, and food label knowledge.
-
-CRITICAL RULES:
-- If the user describes a quantity (e.g. "two slim jims", "3 eggs", "large portion"), you MUST multiply the per-unit calories by that quantity. Never return single-serving calories when the user said they ate multiple.
-- If you see a barcode or food package, identify the brand and product from visible text/logo and use the REAL published nutrition facts for that exact product — do not guess.
-- Use REAL brand calories, not generic estimates. Examples: Bubba Burger original = 420 cal. Slim Jim Original = 80 cal each. Big Mac = 550 cal. Whopper = 660 cal.
-- If a photo shows a plate of food, estimate the ACTUAL portion size visible, not a default serving size.
-- Never return 0 calories for any real food item.
-- Sum all ingredients to get totalCalories — never return a total less than the sum of parts.
-- Also estimate totalProteinG and proteinG per ingredient using USDA/brand data. Examples: chicken breast 4oz = 35g protein. Egg = 6g. Bubba Burger = 20g. Slim Jim Original = 6g each.
-- Return ONLY valid JSON, no markdown fences.`;
+  const sysPrompt = `You are a precise nutrition expert. Estimate calories using USDA data, brand nutrition facts, and food label knowledge.
+RULES:
+- Multiply per-unit calories by stated quantity ("two eggs" = 2x, "3 slices" = 3x)
+- Use real brand data: Big Mac=550cal, Whopper=660cal, Slim Jim Original=80cal each, Bubba Burger=420cal
+- For photos estimate the ACTUAL visible portion, not default serving size
+- Never return 0 calories for real food
+- totalCalories must equal sum of ingredient calories
+- Also estimate totalProteinG and per-ingredient proteinG
+- Return ONLY valid JSON, no markdown, no explanation`;
 
   const userPrompt = imageBase64
-    ? `Analyze this meal${description ? ` and the user says: "${description}"` : ""}. If the user mentioned a quantity, multiply calories and protein accordingly. Return JSON:\n{"mealTitle":"...","totalCalories":0,"totalProteinG":0,"ingredients":[{"name":"...","calories":0,"proteinG":0}],"summary":"..."}`
-    : `The user described their meal: "${description}". If they mentioned a quantity (like "two" or "3"), multiply the per-unit calories and protein by that number. Use real brand/USDA calorie and protein data. Return JSON:\n{"mealTitle":"...","totalCalories":0,"totalProteinG":0,"ingredients":[{"name":"...","calories":0,"proteinG":0}],"summary":"..."}`;
+    ? `Analyze this meal photo${description ? `. Extra context: "${description}"` : ""}. Return JSON: {"mealTitle":"...","totalCalories":0,"totalProteinG":0,"ingredients":[{"name":"...","calories":0,"proteinG":0}],"summary":"..."}`
+    : `User described: "${description}". Return JSON: {"mealTitle":"...","totalCalories":0,"totalProteinG":0,"ingredients":[{"name":"...","calories":0,"proteinG":0}],"summary":"..."}`;
 
-  content.push({type:"text",text:userPrompt});
+  // Build content using Anthropic's image format (NOT OpenAI image_url format)
+  const contentArr = [];
+  if (imageBase64) {
+    contentArr.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: detectMediaType(imageBase64),
+        data: imageBase64
+      }
+    });
+  }
+  contentArr.push({ type: "text", text: userPrompt });
 
-  const res = await fetch("https://api.anthropic.com/v1/messages",{
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json",
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
       "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
       "anthropic-dangerous-direct-browser-access": "true"
     },
-    body:JSON.stringify({
-      model:"claude-opus-4-5",
-      max_tokens:1024,
+    body: JSON.stringify({
+      model: "claude-opus-4-5",
+      max_tokens: 1024,
       system: sysPrompt,
-      messages:[{role:"user", content}]
+      messages: [{ role: "user", content: contentArr }]
     })
   });
-  if(!res.ok){const e=await res.json();throw new Error(e.error?.message||"API error");}
+
+  if (!res.ok) {
+    let msg = `API error ${res.status}`;
+    try { const e = await res.json(); msg = e.error?.message || msg; } catch {}
+    if (res.status === 401) throw new Error("Invalid API key — tap ⚙️ to update it");
+    if (res.status === 400) throw new Error(`Bad request: ${msg}`);
+    throw new Error(msg);
+  }
+
   const data = await res.json();
-  const rawText = data.content.find(b => b.type === "text")?.text || "";
-  const cleaned = rawText.trim().replace(/```json\s*/g,"").replace(/```/g,"").trim();
-  return JSON.parse(cleaned);
+  const rawText = data.content?.find(b => b.type === "text")?.text || "";
+  const cleaned = rawText.trim().replace(/```json\s*/gi,"").replace(/```/g,"").trim();
+  try { return JSON.parse(cleaned); }
+  catch {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error("Unexpected response — please try again");
+  }
 }
 
-async function transcribeAudio(apiKey, blob) {
-  const mimeType = blob.type || "audio/webm";
-  const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("ogg") ? "ogg" : "webm";
-  const fd = new FormData();
-  fd.append("file", blob, `audio.${ext}`);
-  fd.append("model","whisper-1");
-  fd.append("language","en");
-  const res = await fetch("https://api.openai.com/v1/audio/transcriptions",{
-    method:"POST",
-    headers:{"Authorization":`Bearer ${apiKey}`},
-    body:fd
-  });
-  if(!res.ok){const e=await res.json();throw new Error(e.error?.message||"Whisper error");}
-  return (await res.json()).text || "";
+function recordFoodItems(ingredients) {
+  if (!ingredients?.length) return;
+  const existing = loadFoodHistory();
+  const map = {};
+  existing.forEach(f => { map[f.name.toLowerCase()] = f; });
+  ingredients.forEach(f => { map[f.name.toLowerCase()] = {name:f.name,calories:f.calories,proteinG:f.proteinG||0}; });
+  saveFoodHistory(Object.values(map).slice(0,100));
 }
 
 let _id = Date.now();
 const uid = () => `m${++_id}`;
 const EMOJIS = ["🍝","🥗","🍜","🥩","🍱","🥘","🍛","🥙","🌮","🫕"];
 
-// ─── Colors ───────────────────────────────────────────────────────────────────
 const C = {
   bg:"#0A0A0F", surface:"#13131A", hover:"#1C1C28", card:"#16161F",
   border:"rgba(255,255,255,0.06)",
@@ -143,16 +165,16 @@ const C = {
 };
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
-const IcCamera = () => <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>;
-const IcMic = ({size=25}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>;
-const IcStop = ({size=20}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>;
+const IcCamera = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>;
+const IcMic = ({size=22}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>;
+const IcStop = ({size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>;
 const IcLeft = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>;
 const IcRight = () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>;
 const IcEdit = ({size=13}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
 const IcBack = () => <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>;
 const IcTrash = () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>;
+const IcGear = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
 
-// ─── Shared: Spinner ──────────────────────────────────────────────────────────
 function Spinner({text}) {
   return <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",gap:20,background:C.bg}}>
     <div style={{width:44,height:44,border:`3px solid ${C.border}`,borderTop:`3px solid ${C.accent}`,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
@@ -160,33 +182,23 @@ function Spinner({text}) {
   </div>;
 }
 
-// ─── Shared: Voice Visualizer ─────────────────────────────────────────────────
-// FIX 1: Uses the shared stream instead of requesting a new one
+// ─── Voice Visualizer ─────────────────────────────────────────────────────────
 function VoiceVisualizer({active}) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
   const acRef = useRef(null);
   const BARS = 24;
-
   useEffect(() => {
-    const canvas = canvasRef.current; if(!canvas) return;
+    const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext("2d");
-    const drawFlat = () => {
+    const flat = () => {
       ctx.clearRect(0,0,canvas.width,canvas.height);
       const bw = canvas.width/BARS;
       ctx.fillStyle = "rgba(74,230,138,0.18)";
       for(let i=0;i<BARS;i++){const h=4;ctx.beginPath();ctx.roundRect(i*bw+1,(canvas.height-h)/2,bw-2,h,2);ctx.fill();}
     };
-
-    if(!active){
-      cancelAnimationFrame(rafRef.current);
-      try{ acRef.current?.close(); acRef.current=null; }catch{}
-      drawFlat();
-      return;
-    }
-
-    // Use the already-granted shared stream — no new permission prompt
-    const setupAnalyser = (stream) => {
+    if (!active) { cancelAnimationFrame(rafRef.current); try{acRef.current?.close();acRef.current=null;}catch{} flat(); return; }
+    const setup = stream => {
       try {
         const ac = new(window.AudioContext||window.webkitAudioContext)();
         acRef.current = ac;
@@ -197,38 +209,24 @@ function VoiceVisualizer({active}) {
           rafRef.current = requestAnimationFrame(draw);
           an.getByteFrequencyData(buf);
           ctx.clearRect(0,0,canvas.width,canvas.height);
-          const bw=canvas.width/BARS, maxH=canvas.height*0.88;
-          for(let i=0;i<BARS;i++){
-            const val=buf[Math.floor(i*buf.length/BARS)]/255;
-            const h=Math.max(4,val*maxH);
-            ctx.fillStyle=`rgba(74,230,138,${0.3+val*0.7})`;
-            ctx.beginPath();ctx.roundRect(i*bw+1,(canvas.height-h)/2,bw-2,h,3);ctx.fill();
-          }
+          const bw=canvas.width/BARS,maxH=canvas.height*0.88;
+          for(let i=0;i<BARS;i++){const v=buf[Math.floor(i*buf.length/BARS)]/255;const h=Math.max(4,v*maxH);ctx.fillStyle=`rgba(74,230,138,${0.3+v*0.7})`;ctx.beginPath();ctx.roundRect(i*bw+1,(canvas.height-h)/2,bw-2,h,3);ctx.fill();}
         };
         draw();
-      } catch { drawFlat(); }
+      } catch { flat(); }
     };
-
-    if (_sharedStream && _sharedStream.active) {
-      setupAnalyser(_sharedStream);
-    } else {
-      getSharedMicStream().then(setupAnalyser).catch(drawFlat);
-    }
-
-    return () => {
-      cancelAnimationFrame(rafRef.current);
-      try{ acRef.current?.close(); acRef.current=null; }catch{}
-    };
+    if (_sharedStream?.active) setup(_sharedStream);
+    else getSharedMicStream().then(setup).catch(flat);
+    return () => { cancelAnimationFrame(rafRef.current); try{acRef.current?.close();acRef.current=null;}catch{}; };
   }, [active]);
-
-  return <div style={{width:"100%",height:56,display:"flex",alignItems:"center"}}>
-    <canvas ref={canvasRef} width={340} height={56} style={{width:"100%",height:"100%",opacity:active?1:0.3,transition:"opacity 0.3s"}}/>
+  return <div style={{width:"100%",height:52,display:"flex",alignItems:"center"}}>
+    <canvas ref={canvasRef} width={340} height={52} style={{width:"100%",height:"100%",opacity:active?1:0.3,transition:"opacity 0.3s"}}/>
   </div>;
 }
 
 // ─── Weight sparkline ─────────────────────────────────────────────────────────
 function WeightSparkline({data}) {
-  if(data.length<2) return null;
+  if (data.length<2) return null;
   const W=120,H=36,P=4,vals=data.map(d=>d.value);
   const mn=Math.min(...vals),mx=Math.max(...vals),lo=mn-0.5,hi=mx+0.5,range=hi-lo||1;
   const tx=i=>P+(i/(data.length-1))*(W-P*2),ty=v=>P+(1-(v-lo)/range)*(H-P*2);
@@ -243,61 +241,26 @@ function WeightSparkline({data}) {
   </svg>;
 }
 
-// ─── Food item history for autocomplete ──────────────────────────────────────
-const loadFoodHistory = () => { try { return JSON.parse(ls.get("jct:foodhist") || "[]"); } catch { return []; } };
-const saveFoodHistory = arr => ls.set("jct:foodhist", JSON.stringify(arr));
-
-function recordFoodItems(ingredients) {
-  if(!ingredients||!ingredients.length) return;
-  const existing = loadFoodHistory();
-  const map = {};
-  existing.forEach(f => { map[f.name.toLowerCase()] = f; });
-  ingredients.forEach(f => { map[f.name.toLowerCase()] = {name:f.name, calories:f.calories, proteinG:f.proteinG||0}; });
-  saveFoodHistory(Object.values(map).slice(0,100));
-}
-
 // ─── MealCard ─────────────────────────────────────────────────────────────────
 function MealCard({meal,onTap,onQuickEdit,onDelete}) {
   const [editing,setEditing]=useState(false);
   const [val,setVal]=useState(String(meal.totalCalories));
   const [swipeX,setSwipeX]=useState(0);
   const [swiping,setSwiping]=useState(false);
-  const touchStartX=useRef(0);
-  const touchStartY=useRef(0);
+  const tx=useRef(0),ty=useRef(0);
   const isWorkout=meal.type==="workout";
   const THRESHOLD=80;
-
   const commit=()=>{const n=parseInt(val);if(!isNaN(n)&&n>=0)onQuickEdit(meal.id,n);else setVal(String(meal.totalCalories));setEditing(false);};
-
-  const onTouchStart=e=>{
-    touchStartX.current=e.touches[0].clientX;
-    touchStartY.current=e.touches[0].clientY;
-    setSwiping(false);
-  };
-  const onTouchMove=e=>{
-    const dx=e.touches[0].clientX-touchStartX.current;
-    const dy=Math.abs(e.touches[0].clientY-touchStartY.current);
-    if(dy>20&&Math.abs(dx)<20) return;
-    if(dx<0){
-      setSwiping(true);
-      setSwipeX(Math.max(dx,-(THRESHOLD+30)));
-    }
-  };
-  const onTouchEnd=()=>{
-    if(swipeX<=-THRESHOLD){ onDelete(meal.id); }
-    else { setSwipeX(0); setSwiping(false); }
-  };
-
+  const onTS=e=>{tx.current=e.touches[0].clientX;ty.current=e.touches[0].clientY;setSwiping(false);};
+  const onTM=e=>{const dx=e.touches[0].clientX-tx.current;const dy=Math.abs(e.touches[0].clientY-ty.current);if(dy>20&&Math.abs(dx)<20)return;if(dx<0){setSwiping(true);setSwipeX(Math.max(dx,-(THRESHOLD+30)));}};
+  const onTE=()=>{if(swipeX<=-THRESHOLD){onDelete(meal.id);}else{setSwipeX(0);setSwiping(false);}};
   return <div style={{position:"relative",marginBottom:10,borderRadius:16,overflow:"hidden"}}>
     <div style={{position:"absolute",inset:0,background:C.red,borderRadius:16,display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:20}}>
-      <span style={{color:"#fff",fontSize:13,fontWeight:700,marginRight:6}}>Delete</span>
-      <IcTrash/>
+      <span style={{color:"#fff",fontSize:13,fontWeight:700,marginRight:6}}>Delete</span><IcTrash/>
     </div>
-    <div
-      style={{display:"flex",alignItems:"center",gap:12,background:C.card,border:`1px solid ${isWorkout?C.oMid:C.border}`,borderRadius:16,padding:"12px 14px",cursor:"pointer",animation:swiping?"none":"fadeUp 0.25s ease",transform:`translateX(${swipeX}px)`,transition:swiping?"none":"transform 0.3s ease"}}
+    <div style={{display:"flex",alignItems:"center",gap:12,background:C.card,border:`1px solid ${isWorkout?C.oMid:C.border}`,borderRadius:16,padding:"12px 14px",cursor:"pointer",transform:`translateX(${swipeX}px)`,transition:swiping?"none":"transform 0.3s ease"}}
       onClick={()=>{if(!editing&&swipeX===0)onTap(meal);}}
-      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
-    >
+      onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
       {meal.imageBase64
         ?<img src={`data:image/jpeg;base64,${meal.imageBase64}`} style={{width:54,height:54,borderRadius:12,objectFit:"cover",flexShrink:0}} alt=""/>
         :<div style={{width:54,height:54,borderRadius:12,background:isWorkout?C.oDim:C.hover,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:22}}>{isWorkout?"🔥":meal.emoji||"🍽️"}</span></div>
@@ -307,7 +270,8 @@ function MealCard({meal,onTap,onQuickEdit,onDelete}) {
         <p style={{fontSize:11,color:C.sub,lineHeight:1.4,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{meal.summary}</p>
         <p style={{fontSize:10,color:C.dim,marginTop:3}}>{meal.time}</p>
       </div>
-      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1,padding:"8px 10px",background:isWorkout?C.oDim:C.aDim,borderRadius:12,minWidth:56,cursor:"pointer",position:"relative",flexShrink:0}} onClick={e=>{e.stopPropagation();setEditing(true);setVal(String(meal.totalCalories));}}>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1,padding:"8px 10px",background:isWorkout?C.oDim:C.aDim,borderRadius:12,minWidth:56,position:"relative",flexShrink:0}}
+        onClick={e=>{e.stopPropagation();setEditing(true);setVal(String(meal.totalCalories));}}>
         {editing
           ?<input autoFocus type="number" inputMode="numeric" style={{width:48,background:"transparent",border:"none",borderBottom:`2px solid ${isWorkout?C.orange:C.accent}`,color:isWorkout?C.orange:C.accent,fontSize:16,fontWeight:800,textAlign:"center",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif"}} value={val} onChange={e=>setVal(e.target.value)} onBlur={commit} onKeyDown={e=>e.key==="Enter"&&commit()} onClick={e=>e.stopPropagation()}/>
           :<><span style={{fontSize:16,fontWeight:800,color:isWorkout?C.orange:C.accent,letterSpacing:"-0.5px"}}>{isWorkout?"-":""}{meal.totalCalories}</span><span style={{fontSize:9,color:isWorkout?C.oMid:C.aMid,textTransform:"uppercase"}}>{isWorkout?"burned":"kcal"}</span><span style={{position:"absolute",top:4,right:4,color:isWorkout?C.oMid:C.aMid}}><IcEdit/></span></>
@@ -325,80 +289,99 @@ function WorkoutModal({onAdd,onClose}) {
   const [showSugg,setShowSugg]=useState(false);
   const [allLabels]=useState(()=>loadWorkoutLabels());
   const calRef=useRef();
-
   useEffect(()=>{setTimeout(()=>calRef.current?.focus(),100);},[]);
-
-  const handleLabelChange=(val)=>{
-    setLabel(val);
-    if(val.trim().length>0){
-      const matches=allLabels.filter(l=>l.toLowerCase().includes(val.toLowerCase())&&l.toLowerCase()!==val.toLowerCase());
-      setSuggestions(matches);
-      setShowSugg(matches.length>0);
-    } else {
-      setShowSugg(false);
-    }
-  };
-
-  const pickSuggestion=(s)=>{
-    setLabel(s);
-    setShowSugg(false);
-  };
-
+  const handleLabelChange=v=>{setLabel(v);if(v.trim()){const m=allLabels.filter(l=>l.toLowerCase().includes(v.toLowerCase())&&l.toLowerCase()!==v.toLowerCase());setSuggestions(m);setShowSugg(m.length>0);}else setShowSugg(false);};
   const submit=()=>{
-    const n=parseInt(cal);
-    if(isNaN(n)||n<=0) return;
-    const finalLabel=label.trim()||"Workout";
-    ls.set("jct:lastlabel", finalLabel);
-    if(finalLabel!=="Workout"){
-      const updated=[...new Set([finalLabel,...allLabels])].slice(0,20);
-      saveWorkoutLabels(updated);
-    }
+    const n=parseInt(cal);if(isNaN(n)||n<=0)return;
+    const fl=label.trim()||"Workout";ls.set("jct:lastlabel",fl);
+    if(fl!=="Workout"){const u=[...new Set([fl,...allLabels])].slice(0,20);saveWorkoutLabels(u);}
     const now=new Date();
-    onAdd({
-      id:uid(), type:"workout",
-      mealTitle:finalLabel,
-      totalCalories:n,
-      ingredients:[],
-      summary:`${n} calories burned`,
-      imageBase64:null,
-      time:now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),
-      addedAt:now.getTime(),
-      emoji:"🔥"
-    });
+    onAdd({id:uid(),type:"workout",mealTitle:fl,totalCalories:n,ingredients:[],summary:`${n} calories burned`,imageBase64:null,time:now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),addedAt:now.getTime(),emoji:"🔥"});
   };
-
   return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"flex-end",zIndex:100}} onClick={onClose}>
     <div style={{width:"100%",background:C.surface,borderRadius:"20px 20px 0 0",padding:"24px 20px 48px",border:`1px solid ${C.border}`}} onClick={e=>e.stopPropagation()}>
       <div style={{width:36,height:4,background:C.border,borderRadius:2,margin:"0 auto 20px"}}/>
       <p style={{fontSize:17,fontWeight:800,color:C.text,marginBottom:4}}>Log Workout</p>
       <p style={{fontSize:12,color:C.sub,marginBottom:20}}>Calories burned will increase today's goal</p>
       <div style={{position:"relative",marginBottom:12}}>
-        <input type="text" placeholder="Activity (e.g. OrangeTheory, Walking…)" value={label}
-          onChange={e=>handleLabelChange(e.target.value)}
-          onFocus={()=>{ if(label.trim()&&suggestions.length>0) setShowSugg(true); }}
-          onBlur={()=>setTimeout(()=>setShowSugg(false),150)}
+        <input type="text" placeholder="Activity (e.g. OrangeTheory, Walking…)" value={label} onChange={e=>handleLabelChange(e.target.value)} onBlur={()=>setTimeout(()=>setShowSugg(false),150)}
           style={{width:"100%",background:C.hover,border:`1px solid ${C.border}`,borderRadius:12,color:C.text,fontSize:15,padding:"12px 16px",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif"}}/>
         {showSugg&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden",zIndex:10,marginTop:4}}>
-          {suggestions.map((s,i)=>(
-            <div key={i} onMouseDown={()=>pickSuggestion(s)}
-              style={{padding:"12px 16px",fontSize:14,color:C.text,cursor:"pointer",borderBottom:i<suggestions.length-1?`1px solid ${C.border}`:"none",background:"transparent"}}>
-              {s}
-            </div>
-          ))}
+          {suggestions.map((s,i)=><div key={i} onMouseDown={()=>{setLabel(s);setShowSugg(false);}} style={{padding:"12px 16px",fontSize:14,color:C.text,cursor:"pointer",borderBottom:i<suggestions.length-1?`1px solid ${C.border}`:"none"}}>{s}</div>)}
         </div>}
       </div>
-      <input ref={calRef} type="number" inputMode="numeric" placeholder="Calories burned" value={cal}
-        onChange={e=>setCal(e.target.value)}
-        onKeyDown={e=>e.key==="Enter"&&submit()}
+      <input ref={calRef} type="number" inputMode="numeric" placeholder="Calories burned" value={cal} onChange={e=>setCal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}
         style={{width:"100%",background:C.hover,border:`1px solid ${C.border}`,borderRadius:12,color:C.text,fontSize:22,fontWeight:800,padding:"14px 16px",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",marginBottom:16,letterSpacing:"-0.5px"}}/>
-      <button style={{width:"100%",background:C.orange,border:"none",borderRadius:14,color:"#fff",fontSize:15,fontWeight:700,padding:"16px",cursor:"pointer",opacity:parseInt(cal)>0?1:0.4}} onClick={submit} disabled={!(parseInt(cal)>0)}>
-        Add Workout 🔥
-      </button>
+      <button style={{width:"100%",background:C.orange,border:"none",borderRadius:14,color:"#fff",fontSize:15,fontWeight:700,padding:"16px",opacity:parseInt(cal)>0?1:0.4}} onClick={submit} disabled={!(parseInt(cal)>0)}>Add Workout 🔥</button>
     </div>
   </div>;
 }
 
-// ─── API Key screen ───────────────────────────────────────────────────────────
+// ─── Settings screen ──────────────────────────────────────────────────────────
+function SettingsScreen({apiKey,onSave,onBack}) {
+  const [val,setVal]=useState("");
+  const [saved,setSaved]=useState(false);
+  const [err,setErr]=useState("");
+  const masked = apiKey ? `${apiKey.slice(0,14)}…${apiKey.slice(-4)}` : null;
+
+  const submit=()=>{
+    const t=val.trim();
+    if(!t){setErr("Please enter an API key");return;}
+    onSave(t);setSaved(true);setVal("");setErr("");
+    setTimeout(()=>setSaved(false),2500);
+  };
+
+  return <div style={{height:"100%",background:C.bg,overflowY:"auto",paddingBottom:48}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(env(safe-area-inset-top,44px) + 12px) 16px 20px"}}>
+      <button style={{width:44,height:44,borderRadius:12,background:C.hover,border:`1px solid ${C.border}`,color:C.text,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onBack}><IcBack/></button>
+      <span style={{fontSize:16,fontWeight:700,color:C.text}}>Settings</span>
+      <div style={{width:44}}/>
+    </div>
+
+    <div style={{padding:"0 16px",display:"flex",flexDirection:"column",gap:14}}>
+      {/* API Key */}
+      <div style={{background:C.surface,borderRadius:18,border:`1px solid ${C.border}`,padding:"18px 18px 16px"}}>
+        <p style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:6}}>Anthropic API Key</p>
+        {masked
+          ? <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,padding:"10px 12px",background:C.aDim,borderRadius:10,border:`1px solid ${C.aMid}`}}>
+              <span style={{fontSize:11,color:C.accent,fontWeight:600}}>✓ Key saved:</span>
+              <span style={{fontSize:11,color:C.sub,fontFamily:"monospace"}}>{masked}</span>
+            </div>
+          : <p style={{fontSize:12,color:C.red,marginBottom:12,fontWeight:600}}>⚠ No key set — meals cannot be analyzed</p>
+        }
+        <p style={{fontSize:12,color:C.sub,lineHeight:1.6,marginBottom:12}}>
+          Get a key at <span style={{color:C.accent}}>console.anthropic.com</span>. It's stored only on this device and sent directly to Anthropic.
+        </p>
+        <input type="password" placeholder={masked?"Enter new key to replace…":"sk-ant-..."} value={val}
+          onChange={e=>{setVal(e.target.value);setErr("");setSaved(false);}}
+          onKeyDown={e=>e.key==="Enter"&&submit()}
+          style={{width:"100%",background:C.hover,border:`1px solid ${err?C.red:C.border}`,borderRadius:12,color:C.text,fontSize:14,padding:"13px 14px",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",marginBottom:8}}/>
+        {err&&<p style={{color:C.red,fontSize:12,marginBottom:8}}>{err}</p>}
+        <button style={{width:"100%",background:saved?C.aDim:C.accent,border:saved?`1px solid ${C.aMid}`:"none",borderRadius:12,color:saved?C.accent:C.bg,fontSize:14,fontWeight:700,padding:"13px"}} onClick={submit}>
+          {saved?"✓ Key Saved!":"Save Key"}
+        </button>
+      </div>
+
+      {/* Voice info */}
+      <div style={{background:C.surface,borderRadius:18,border:`1px solid ${C.border}`,padding:"18px"}}>
+        <p style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:8}}>Voice Transcription</p>
+        <p style={{fontSize:12,color:C.sub,lineHeight:1.7}}>
+          Voice logging uses your browser's built-in speech recognition — free, no extra key needed. Works best in Chrome and Safari on iOS/Android. Speak naturally, then tap Add to Log.
+        </p>
+      </div>
+
+      {/* About */}
+      <div style={{background:C.surface,borderRadius:18,border:`1px solid ${C.border}`,padding:"18px"}}>
+        <p style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:8}}>About Just Calories</p>
+        <p style={{fontSize:12,color:C.sub,lineHeight:1.7}}>
+          Photos are analyzed by Claude's vision model. Voice descriptions are processed locally by your browser. All meal data is stored on your device only and never uploaded.
+        </p>
+      </div>
+    </div>
+  </div>;
+}
+
+// ─── First-run API Key screen ─────────────────────────────────────────────────
 function ApiKeyScreen({onSave}) {
   const [val,setVal]=useState("");
   const [err,setErr]=useState("");
@@ -409,18 +392,20 @@ function ApiKeyScreen({onSave}) {
       <h1 style={{fontSize:32,fontWeight:800,color:C.text,textAlign:"center",lineHeight:1.15,letterSpacing:"-1px",marginBottom:6}}>Just Calories</h1>
       <p style={{color:C.accent,fontSize:13,fontWeight:600,marginBottom:32,marginTop:6}}>Powered by Claude Vision</p>
       <div style={{width:"100%",background:C.surface,borderRadius:20,padding:"24px 20px",border:`1px solid ${C.border}`}}>
-        <p style={{color:C.sub,fontSize:13,lineHeight:1.7,textAlign:"center",marginBottom:16}}>Enter your Anthropic API key. Stored only on this device.</p>
-        <input style={{width:"100%",background:C.hover,border:`1px solid ${C.border}`,borderRadius:12,color:C.text,fontSize:15,padding:"14px 16px",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif"}} type="password" placeholder="sk-ant-..." value={val} onChange={e=>{setVal(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+        <p style={{color:C.sub,fontSize:13,lineHeight:1.7,textAlign:"center",marginBottom:4}}>Enter your Anthropic API key to get started.</p>
+        <p style={{color:C.dim,fontSize:12,lineHeight:1.6,textAlign:"center",marginBottom:16}}>Get one at <span style={{color:C.accent}}>console.anthropic.com</span></p>
+        <input style={{width:"100%",background:C.hover,border:`1px solid ${err?C.red:C.border}`,borderRadius:12,color:C.text,fontSize:15,padding:"14px 16px",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif"}}
+          type="password" placeholder="sk-ant-..." value={val} onChange={e=>{setVal(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()}/>
         {err&&<p style={{color:C.red,fontSize:12,marginTop:6}}>{err}</p>}
-        <button style={{width:"100%",background:C.accent,border:"none",borderRadius:14,color:C.bg,fontSize:15,fontWeight:700,padding:"16px",cursor:"pointer",marginTop:14}} onClick={submit}>Get Started →</button>
+        <button style={{width:"100%",background:C.accent,border:"none",borderRadius:14,color:C.bg,fontSize:15,fontWeight:700,padding:"16px",marginTop:14}} onClick={submit}>Get Started →</button>
       </div>
-      <p style={{color:C.dim,fontSize:11,marginTop:14}}>Your key never leaves this device.</p>
+      <p style={{color:C.dim,fontSize:11,marginTop:14,textAlign:"center",lineHeight:1.6}}>Stored only on this device. Never shared.</p>
     </div>
   </div>;
 }
 
 // ─── Home screen ──────────────────────────────────────────────────────────────
-function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,meals,goal,baseGoal,setBaseGoal,date,setDate}) {
+function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,onOpenSettings,meals,goal,baseGoal,setBaseGoal,date,setDate}) {
   const [editGoal,setEditGoal]=useState(false);
   const [goalVal,setGoalVal]=useState(String(baseGoal));
   const [weightLog,setWeightLog]=useState(()=>loadWeights());
@@ -429,55 +414,36 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,meals,go
   const [showWorkout,setShowWorkout]=useState(false);
   const fileRef=useRef();
 
-  const eaten = meals.filter(m=>m.type!=="workout").reduce((s,m)=>s+m.totalCalories,0);
-  const burned = meals.filter(m=>m.type==="workout").reduce((s,m)=>s+m.totalCalories,0);
-  const protein = meals.filter(m=>m.type!=="workout").reduce((s,m)=>s+(m.totalProteinG||0),0);
+  const eaten=meals.filter(m=>m.type!=="workout").reduce((s,m)=>s+m.totalCalories,0);
+  const burned=meals.filter(m=>m.type==="workout").reduce((s,m)=>s+m.totalCalories,0);
+  const protein=meals.filter(m=>m.type!=="workout").reduce((s,m)=>s+(m.totalProteinG||0),0);
   const latestW=weightLog.length>0?weightLog[weightLog.length-1].value:0;
 
-  const commitGoal=()=>{
-    const n=parseInt(goalVal);
-    if(!isNaN(n)&&n>0){
-      setBaseGoal(n);
-      saveBaseGoal(n);
-    } else setGoalVal(String(baseGoal));
-    setEditGoal(false);
-  };
-
-  const commitWeight=()=>{
-    const n=parseFloat(weightVal);
-    if(!isNaN(n)&&n>0){
-      const entry={date:fmtKey(new Date()),value:n};
-      const next=[...weightLog.filter(w=>w.date!==entry.date),entry].sort((a,b)=>a.date.localeCompare(b.date));
-      setWeightLog(next);saveWeights(next);
-    }
-    setEditWeight(false);
-  };
-
+  const commitGoal=()=>{const n=parseInt(goalVal);if(!isNaN(n)&&n>0){setBaseGoal(n);saveBaseGoal(n);}else setGoalVal(String(baseGoal));setEditGoal(false);};
+  const commitWeight=()=>{const n=parseFloat(weightVal);if(!isNaN(n)&&n>0){const entry={date:fmtKey(new Date()),value:n};const next=[...weightLog.filter(w=>w.date!==entry.date),entry].sort((a,b)=>a.date.localeCompare(b.date));setWeightLog(next);saveWeights(next);}setEditWeight(false);};
   const shift=days=>{const d=new Date(date);d.setDate(d.getDate()+days);setDate(d);};
 
-  const handleAddWorkout=(workout)=>{
-    onAddWorkout(workout);
-    setShowWorkout(false);
-  };
-
   return <div style={{height:"100%",background:C.bg,overflowY:"auto",paddingBottom:40}}>
-    {/* Header */}
     <div style={{padding:"env(safe-area-inset-top,44px) 20px 0",background:`linear-gradient(180deg,${C.surface} 0%,${C.bg} 100%)`}}>
-      <div style={{paddingTop:12,display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
-        <span style={{fontSize:21}}>⚡</span>
-        <span style={{fontSize:17,fontWeight:800,color:C.text,letterSpacing:"-0.5px"}}>Just Calories</span>
+      <div style={{paddingTop:12,display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:20}}>⚡</span>
+          <span style={{fontSize:17,fontWeight:800,color:C.text,letterSpacing:"-0.5px"}}>Just Calories</span>
+        </div>
+        <button style={{width:36,height:36,borderRadius:10,background:C.hover,border:`1px solid ${C.border}`,color:C.sub,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onOpenSettings}>
+          <IcGear/>
+        </button>
       </div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-        <button style={{width:34,height:34,borderRadius:10,background:C.hover,border:`1px solid ${C.border}`,color:C.sub,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>shift(-1)}><IcLeft/></button>
+        <button style={{width:34,height:34,borderRadius:10,background:C.hover,border:`1px solid ${C.border}`,color:C.sub,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>shift(-1)}><IcLeft/></button>
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
           <span style={{fontSize:14,fontWeight:600,color:C.text}}>{fmtDisplay(date)}</span>
-          {!isToday(date)&&<button style={{background:C.aDim,border:`1px solid ${C.aMid}`,color:C.accent,borderRadius:20,fontSize:11,fontWeight:600,padding:"2px 10px",cursor:"pointer"}} onClick={()=>setDate(new Date())}>Today</button>}
+          {!isToday(date)&&<button style={{background:C.aDim,border:`1px solid ${C.aMid}`,color:C.accent,borderRadius:20,fontSize:11,fontWeight:600,padding:"2px 10px"}} onClick={()=>setDate(new Date())}>Today</button>}
         </div>
-        <button style={{width:34,height:34,borderRadius:10,background:C.hover,border:`1px solid ${C.border}`,color:C.sub,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>shift(1)}><IcRight/></button>
+        <button style={{width:34,height:34,borderRadius:10,background:C.hover,border:`1px solid ${C.border}`,color:C.sub,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>shift(1)}><IcRight/></button>
       </div>
     </div>
 
-    {/* Stats row */}
     <div style={{display:"flex",gap:10,padding:"0 16px 16px"}}>
       <div style={{flex:1,display:"flex",flexDirection:"column",gap:3,padding:"16px 18px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:18}}>
         <span style={{fontSize:9,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:2}}>Calories</span>
@@ -486,14 +452,11 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,meals,go
           <span style={{fontSize:16,color:C.dim,fontWeight:300,margin:"0 2px"}}>/</span>
           {editGoal
             ?<input autoFocus type="number" inputMode="numeric" style={{background:"transparent",border:"none",borderBottom:`2px solid ${C.accent}`,color:C.text,fontSize:22,fontWeight:800,fontFamily:"'Plus Jakarta Sans',sans-serif",letterSpacing:"-0.5px",outline:"none",padding:0,width:80,lineHeight:1}} value={goalVal} onChange={e=>setGoalVal(e.target.value)} onBlur={commitGoal} onKeyDown={e=>e.key==="Enter"&&commitGoal()}/>
-            :<span style={{fontSize:20,fontWeight:700,color:C.sub,letterSpacing:"-0.5px",cursor:"pointer",lineHeight:1,WebkitUserSelect:"none"}} onClick={()=>{setGoalVal(String(baseGoal));setEditGoal(true);}}>{goal}</span>
+            :<span style={{fontSize:20,fontWeight:700,color:C.sub,letterSpacing:"-0.5px",cursor:"pointer",lineHeight:1}} onClick={()=>{setGoalVal(String(baseGoal));setEditGoal(true);}}>{goal}</span>
           }
           {!editGoal&&<span style={{color:C.dim,cursor:"pointer",display:"inline-flex",alignItems:"center",marginLeft:2}} onClick={()=>{setGoalVal(String(baseGoal));setEditGoal(true);}}><IcEdit/></span>}
         </div>
-        <span style={{fontSize:9,color:C.dim,fontWeight:500,marginTop:1}}>
-          {editGoal?"enter base goal + return":burned>0?`${baseGoal} + ${burned} burned`:"calories eaten / goal"}
-        </span>
-        {/* Protein row */}
+        <span style={{fontSize:9,color:C.dim,fontWeight:500,marginTop:1}}>{editGoal?"enter base goal + return":burned>0?`${baseGoal} + ${burned} burned`:"calories eaten / goal"}</span>
         <div style={{marginTop:6,paddingTop:6,borderTop:`1px solid ${C.border}`,display:"flex",alignItems:"baseline",gap:4}}>
           <span style={{fontSize:18,fontWeight:800,color:"#60C8F5",letterSpacing:"-0.5px",lineHeight:1}}>{protein}g</span>
           <span style={{fontSize:9,color:C.dim,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.5px"}}>protein</span>
@@ -513,15 +476,13 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,meals,go
       </div>
     </div>
 
-    {/* Add buttons */}
     <div style={{display:"flex",gap:10,padding:"0 16px 18px"}}>
-      <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"15px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,color:C.text,cursor:"pointer"}} onClick={()=>fileRef.current.click()}><IcCamera/></button>
+      <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"15px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,color:C.text}} onClick={()=>fileRef.current.click()}><IcCamera/></button>
       <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>onOpenCamera(ev.target.result.split(",")[1],ev.target.result);r.readAsDataURL(f);e.target.value="";}}/>
-      <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"15px",background:C.aDim,border:`1px solid ${C.aMid}`,borderRadius:16,color:C.accent,cursor:"pointer"}} onClick={onOpenVoice}><IcMic/></button>
-      <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"15px",background:C.oDim,border:`1px solid ${C.oMid}`,borderRadius:16,color:C.orange,cursor:"pointer",fontSize:22}} onClick={()=>setShowWorkout(true)}>🔥</button>
+      <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"15px",background:C.aDim,border:`1px solid ${C.aMid}`,borderRadius:16,color:C.accent}} onClick={onOpenVoice}><IcMic/></button>
+      <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"15px",background:C.oDim,border:`1px solid ${C.oMid}`,borderRadius:16,color:C.orange,fontSize:22}} onClick={()=>setShowWorkout(true)}>🔥</button>
     </div>
 
-    {/* Meals list */}
     <div style={{padding:"0 16px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
         <span style={{fontSize:15,fontWeight:700,color:C.text}}>Meals & Workouts</span>
@@ -532,76 +493,53 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,meals,go
           <span style={{fontSize:36}}>🍽️</span>
           <p style={{color:C.sub,fontSize:14,textAlign:"center",lineHeight:1.6}}>Nothing logged yet.<br/>Tap 📷, 🎤, or 🔥 to get started.</p>
         </div>
-        :[...meals].reverse().map(m=><MealCard key={m.id} meal={m} onTap={onSelectMeal} onDelete={id=>onSelectMeal({...m,_delete:true})} onQuickEdit={(id,cal)=>onSelectMeal({...m,_quickEdit:true,_newCal:cal})}/>)
+        :[...meals].reverse().map(m=><MealCard key={m.id} meal={m} onTap={onSelectMeal}
+            onDelete={id=>onSelectMeal({...m,_delete:true})}
+            onQuickEdit={(id,cal)=>onSelectMeal({...m,_quickEdit:true,_newCal:cal})}/>)
       }
     </div>
-
-    {showWorkout&&<WorkoutModal onAdd={handleAddWorkout} onClose={()=>setShowWorkout(false)}/>}
+    {showWorkout&&<WorkoutModal onAdd={w=>{onAddWorkout(w);setShowWorkout(false);}} onClose={()=>setShowWorkout(false)}/>}
   </div>;
 }
 
-// ─── FIX 1: Recording hook — reuses shared mic stream ─────────────────────────
-function useRecorder(apiKey, onTranscript) {
-  const [phase, setPhase] = useState("idle");
-  const [elapsed, setElapsed] = useState(0);
-  const mrRef=useRef(null), chunksRef=useRef([]), timerRef=useRef(null);
+// ─── useWebSpeech — browser-native STT, no API key needed ────────────────────
+function useWebSpeech(onUpdate) {
+  const recRef = useRef(null);
+  const [listening, setListening] = useState(false);
+  const supported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
-  const fmtTime = s => `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
-
-  // stopRecording stops the MediaRecorder but does NOT kill the shared stream
-  const stopRecording = useCallback(() => {
-    clearInterval(timerRef.current);
-    try { mrRef.current?.stop(); } catch {}
-  }, []);
-
-  // stopAll is the full cleanup — also used when navigating away
-  const stopAll = useCallback(() => {
-    clearInterval(timerRef.current);
-    try { mrRef.current?.stop(); } catch {}
-  }, []);
-
-  const start = useCallback(async () => {
-    setPhase("requesting"); setElapsed(0); chunksRef.current = [];
+  const start = useCallback(() => {
+    if (!supported) return;
     try {
-      // Reuse the persistent shared stream — no new permission prompt
-      const stream = await getSharedMicStream();
-
-      const mimeTypes = ["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/ogg",""];
-      const mimeType = mimeTypes.find(m => !m || MediaRecorder.isTypeSupported(m)) || "";
-      const mr = new MediaRecorder(stream, mimeType ? {mimeType} : {});
-      mr.ondataavailable = e => { if(e.data.size>0) chunksRef.current.push(e.data); };
-      mr.onstop = async () => {
-        const blob = new Blob(chunksRef.current, {type: mr.mimeType || "audio/webm"});
-        if(blob.size < 1000) { setPhase("idle"); return; }
-        setPhase("transcribing");
-        try {
-          const text = await transcribeAudio(apiKey, blob);
-          onTranscript(text);
-          setPhase("done");
-        } catch(e) {
-          onTranscript("");
-          setPhase("error");
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const rec = new SR();
+      recRef.current = rec;
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = "en-US";
+      let final = "";
+      rec.onresult = e => {
+        let interim = "";
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const t = e.results[i][0].transcript;
+          if (e.results[i].isFinal) final += t + " ";
+          else interim = t;
         }
+        onUpdate(final + interim);
       };
-      mr.start(250);
-      mrRef.current = mr;
-      setPhase("recording");
-    } catch(e) {
-      setPhase("error");
-    }
-  }, [apiKey, onTranscript]);
+      rec.onerror = () => setListening(false);
+      rec.onend = () => setListening(false);
+      rec.start();
+      setListening(true);
+    } catch { setListening(false); }
+  }, [supported, onUpdate]);
 
   const stop = useCallback(() => {
-    try { mrRef.current?.stop(); } catch {}
+    try { recRef.current?.stop(); } catch {}
+    setListening(false);
   }, []);
 
-  useEffect(() => {
-    if(phase === "recording") { timerRef.current = setInterval(() => setElapsed(e => e+1), 1000); }
-    else clearInterval(timerRef.current);
-    return () => clearInterval(timerRef.current);
-  }, [phase]);
-
-  return {phase, elapsed, fmtTime, start, stop, stopAll};
+  return { listening, supported, start, stop };
 }
 
 // ─── Voice screen ─────────────────────────────────────────────────────────────
@@ -611,189 +549,113 @@ function VoiceScreen({apiKey,onBack,onAdd}) {
   const [submitting,setSubmitting]=useState(false);
   const [foodSugg,setFoodSugg]=useState([]);
   const [showFoodSugg,setShowFoodSugg]=useState(false);
-  const foodHistory = useRef(loadFoodHistory());
+  const foodHistRef=useRef(loadFoodHistory());
 
-  const rec = useRecorder(apiKey, text => { setTranscript(text); });
-  useEffect(()=>{ rec.start(); return rec.stopAll; },[]);
+  const onUpdate = useCallback(text => { setTranscript(text); }, []);
+  const speech = useWebSpeech(onUpdate);
 
-  const handleTranscriptChange = (val) => {
-    setTranscript(val);
-    const words = val.split(/[\s,]+/);
-    const lastWord = words[words.length-1].trim();
-    if(lastWord.length>=2){
-      const matches = foodHistory.current.filter(f=>f.name.toLowerCase().includes(lastWord.toLowerCase())).slice(0,4);
-      setFoodSugg(matches);
-      setShowFoodSugg(matches.length>0);
-    } else {
-      setShowFoodSugg(false);
-    }
-  };
+  useEffect(() => {
+    if (speech.supported) setTimeout(() => speech.start(), 200);
+    return () => speech.stop();
+  }, []);
 
-  const pickFood = (food) => {
-    const words = transcript.split(/[\s,]+/);
-    words[words.length-1] = food.name;
-    setTranscript(words.join(" ") + ` (${food.calories} cal)`);
-    setShowFoodSugg(false);
+  const handleChange = v => {
+    setTranscript(v);
+    const words = v.split(/[\s,]+/);
+    const last = words[words.length-1].trim();
+    if (last.length>=2) {
+      const m = foodHistRef.current.filter(f=>f.name.toLowerCase().includes(last.toLowerCase())).slice(0,4);
+      setFoodSugg(m); setShowFoodSugg(m.length>0);
+    } else setShowFoodSugg(false);
   };
 
   const submit = async () => {
-    if(!transcript.trim()) return;
-    rec.stopAll(); setSubmitting(true);
+    if (!transcript.trim()) return;
+    speech.stop();
+    setSubmitting(true);
     try {
       const r = await analyze(apiKey, null, transcript);
       const now = new Date();
       onAdd({id:uid(),mealTitle:r.mealTitle,totalCalories:r.totalCalories,totalProteinG:r.totalProteinG||0,ingredients:r.ingredients||[],summary:r.summary,imageBase64:null,time:now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),addedAt:now.getTime(),emoji:EMOJIS[Math.floor(Math.random()*EMOJIS.length)]});
-    } catch(e) { setError(e.message||"Error — check API key"); setSubmitting(false); }
+    } catch(e) { setError(e.message||"Error — check Settings ⚙️"); setSubmitting(false); }
   };
 
-  if(submitting||rec.phase==="transcribing") return <Spinner text={rec.phase==="transcribing"?"Transcribing…":"Calculating calories…"}/>;
-
-  const isRec=rec.phase==="recording", isReq=rec.phase==="requesting";
+  if (submitting) return <Spinner text="Calculating calories…"/>;
 
   return <div style={{height:"100%",background:C.bg,overflowY:"auto",paddingBottom:40}}>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"env(safe-area-inset-top,44px) 16px 12px",paddingTop:"calc(env(safe-area-inset-top,44px) + 12px)"}}>
-      <button style={{width:44,height:44,borderRadius:12,background:C.hover,border:`1px solid ${C.border}`,color:C.text,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>{rec.stopAll();onBack();}}><IcBack/></button>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(env(safe-area-inset-top,44px) + 12px) 16px 12px"}}>
+      <button style={{width:44,height:44,borderRadius:12,background:C.hover,border:`1px solid ${C.border}`,color:C.text,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{speech.stop();onBack();}}><IcBack/></button>
       <span style={{fontSize:16,fontWeight:700,color:C.text}}>Voice Log</span>
       <div style={{width:44}}/>
     </div>
     <div style={{display:"flex",flexDirection:"column",gap:16,padding:"8px 20px 40px"}}>
       <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,paddingTop:8}}>
-        <div onClick={isRec?rec.stop:rec.start} style={{width:100,height:100,borderRadius:"50%",background:isRec?"rgba(255,68,68,0.12)":isReq?"rgba(255,255,255,0.04)":"rgba(74,230,138,0.1)",border:`2px solid ${isRec?C.red:isReq?C.border:C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:isReq?"default":"pointer",transition:"all 0.3s",boxShadow:isRec?"0 0 0 12px rgba(255,68,68,0.06),0 0 0 24px rgba(255,68,68,0.03)":isReq?"none":"0 0 0 12px rgba(74,230,138,0.06)",animation:isRec?"ripple 1.5s ease-out infinite":"none"}}>
-          <div style={{color:isRec?C.red:isReq?C.dim:C.accent}}>{isRec?<IcStop size={32}/>:<IcMic size={40}/>}</div>
+        <div onClick={speech.listening?speech.stop:speech.start}
+          style={{width:100,height:100,borderRadius:"50%",background:speech.listening?"rgba(255,68,68,0.12)":"rgba(74,230,138,0.1)",border:`2px solid ${speech.listening?C.red:C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"all 0.3s",boxShadow:speech.listening?"0 0 0 12px rgba(255,68,68,0.06)":"0 0 0 12px rgba(74,230,138,0.06)",animation:speech.listening?"ripple 1.5s ease-out infinite":"none"}}>
+          <div style={{color:speech.listening?C.red:C.accent}}>{speech.listening?<IcStop size={32}/>:<IcMic size={40}/>}</div>
         </div>
-        <div style={{textAlign:"center"}}>
-          <p style={{fontSize:15,fontWeight:600,color:isRec?C.red:isReq?C.dim:C.sub}}>{isReq?"Starting microphone…":isRec?`Recording  ${rec.fmtTime(rec.elapsed)}`:rec.phase==="error"?"Mic blocked — type below":"Tap to start"}</p>
-          {isRec&&<p style={{fontSize:12,color:C.dim,marginTop:4}}>Tap to stop when done speaking</p>}
-        </div>
+        <p style={{fontSize:15,fontWeight:600,color:speech.listening?C.red:C.sub,textAlign:"center"}}>
+          {!speech.supported?"Type your meal below":speech.listening?"Listening… tap to stop":"Tap mic to speak"}
+        </p>
       </div>
-      <VoiceVisualizer active={isRec}/>
+      <VoiceVisualizer active={speech.listening}/>
       <div style={{position:"relative"}}>
-        <textarea style={{width:"100%",minHeight:110,background:C.surface,border:`1px solid ${transcript?C.aMid:C.border}`,borderRadius:14,color:transcript?C.text:C.sub,fontSize:14,padding:"14px 16px",resize:"none",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",lineHeight:1.65,transition:"border-color 0.2s"}} placeholder="Your words appear here as you speak…&#10;Or tap to type what you ate." value={transcript} onChange={e=>handleTranscriptChange(e.target.value)} onBlur={()=>setTimeout(()=>setShowFoodSugg(false),150)}/>
+        <textarea style={{width:"100%",minHeight:110,background:C.surface,border:`1px solid ${transcript?C.aMid:C.border}`,borderRadius:14,color:transcript?C.text:C.sub,fontSize:14,padding:"14px 16px",resize:"none",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",lineHeight:1.65,transition:"border-color 0.2s"}}
+          placeholder={speech.supported?"Words appear here as you speak…\nOr type what you ate.":"Type what you ate (e.g. 'grilled chicken, rice, broccoli')"}
+          value={transcript} onChange={e=>handleChange(e.target.value)} onBlur={()=>setTimeout(()=>setShowFoodSugg(false),150)}/>
         {showFoodSugg&&<div style={{position:"absolute",bottom:"100%",left:0,right:0,background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,overflow:"hidden",marginBottom:4,zIndex:10}}>
           <p style={{fontSize:10,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.8px",padding:"8px 14px 4px"}}>Previously logged</p>
-          {foodSugg.map((f,i)=>(
-            <div key={i} onMouseDown={()=>pickFood(f)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderTop:`1px solid ${C.border}`,cursor:"pointer",background:"transparent"}}>
-              <span style={{fontSize:14,color:C.text}}>{f.name}</span>
-              <span style={{fontSize:13,fontWeight:700,color:C.accent}}>{f.calories} cal</span>
-            </div>
-          ))}
+          {foodSugg.map((f,i)=><div key={i} onMouseDown={()=>{const w=transcript.split(/[\s,]+/);w[w.length-1]=f.name;setTranscript(w.join(" ")+` (${f.calories} cal)`);setShowFoodSugg(false);}} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderTop:`1px solid ${C.border}`,cursor:"pointer"}}>
+            <span style={{fontSize:14,color:C.text}}>{f.name}</span>
+            <span style={{fontSize:13,fontWeight:700,color:C.accent}}>{f.calories} cal</span>
+          </div>)}
         </div>}
       </div>
       {error&&<p style={{color:C.red,fontSize:13,textAlign:"center",lineHeight:1.5}}>{error}</p>}
       <div style={{display:"flex",gap:10}}>
-        {isRec&&<button style={{flexShrink:0,background:C.rDim,border:`2px solid ${C.red}`,borderRadius:14,color:C.red,fontSize:13,fontWeight:700,padding:"16px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}} onClick={rec.stop}>
-          <IcStop size={14}/> Stop
-        </button>}
-        <button style={{flex:1,background:C.accent,border:"none",borderRadius:14,color:C.bg,fontSize:15,fontWeight:700,padding:"16px",cursor:"pointer",opacity:transcript.trim()?1:0.3}} onClick={submit} disabled={!transcript.trim()}>Add to Log →</button>
+        {speech.listening&&<button style={{flexShrink:0,background:C.rDim,border:`2px solid ${C.red}`,borderRadius:14,color:C.red,fontSize:13,fontWeight:700,padding:"16px 14px",display:"flex",alignItems:"center",gap:6}} onClick={speech.stop}><IcStop size={14}/> Stop</button>}
+        <button style={{flex:1,background:C.accent,border:"none",borderRadius:14,color:C.bg,fontSize:15,fontWeight:700,padding:"16px",opacity:transcript.trim()?1:0.3}} onClick={submit} disabled={!transcript.trim()}>Add to Log →</button>
       </div>
     </div>
   </div>;
 }
 
-// ─── FIX 2: Photo screen — clean separation between mic recording and photo submit
+// ─── Photo screen ─────────────────────────────────────────────────────────────
 function PhotoScreen({apiKey,imageBase64,imagePreview,onBack,onAdd}) {
-  const [transcript,setTranscript]=useState("");
+  const [note,setNote]=useState("");
   const [error,setError]=useState("");
   const [submitting,setSubmitting]=useState(false);
-  // Track whether mic is actively recording so we can stop it before submit
-  const [isRecording, setIsRecording] = useState(false);
-  const mrRef = useRef(null);
-  const chunksRef = useRef([]);
-  const timerRef = useRef(null);
-  const [elapsed, setElapsed] = useState(0);
-  const [micPhase, setMicPhase] = useState("idle"); // idle | requesting | recording | transcribing
 
-  const fmtTime = s => `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+  const onUpdate = useCallback(text => setNote(text), []);
+  const speech = useWebSpeech(onUpdate);
+  useEffect(() => () => speech.stop(), []);
 
-  // Cleanup on unmount
-  useEffect(() => () => {
-    clearInterval(timerRef.current);
-    try { mrRef.current?.stop(); } catch {}
-  }, []);
-
-  const startMic = async () => {
-    chunksRef.current = [];
-    setMicPhase("requesting");
-    try {
-      const stream = await getSharedMicStream(); // reuses existing permission
-      const mimeTypes = ["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/ogg",""];
-      const mimeType = mimeTypes.find(m => !m || MediaRecorder.isTypeSupported(m)) || "";
-      const mr = new MediaRecorder(stream, mimeType ? {mimeType} : {});
-      mr.ondataavailable = e => { if(e.data.size>0) chunksRef.current.push(e.data); };
-      // onstop only transcribes — does NOT submit the photo meal
-      mr.onstop = async () => {
-        clearInterval(timerRef.current);
-        setMicPhase("transcribing");
-        const blob = new Blob(chunksRef.current, {type: mr.mimeType || "audio/webm"});
-        if(blob.size >= 500) {
-          try {
-            const text = await transcribeAudio(apiKey, blob);
-            setTranscript(prev => prev ? `${prev} ${text}` : text);
-          } catch {}
-        }
-        setMicPhase("idle");
-        setIsRecording(false);
-      };
-      mr.start(250);
-      mrRef.current = mr;
-      setMicPhase("recording");
-      setIsRecording(true);
-      setElapsed(0);
-      timerRef.current = setInterval(() => setElapsed(e => e+1), 1000);
-    } catch {
-      setMicPhase("idle");
-    }
-  };
-
-  const stopMic = () => {
-    clearInterval(timerRef.current);
-    try { mrRef.current?.stop(); } catch {}
-  };
-
-  // FIX 2: submit is now completely independent of the mic recorder.
-  // It stops mic if needed, then directly calls analyze() with the imageBase64.
+  // Submit is completely independent: always passes imageBase64 directly to Claude
   const submit = async () => {
-    // Stop mic recording if active (fire-and-forget, don't wait for transcription)
-    if(isRecording) {
-      clearInterval(timerRef.current);
-      try { mrRef.current?.stop(); } catch {}
-      setIsRecording(false);
-    }
-
+    speech.stop();
     setSubmitting(true);
     setError("");
-
     try {
-      // Always pass imageBase64; transcript is optional additional context
-      const r = await analyze(apiKey, imageBase64, transcript || undefined);
+      const r = await analyze(apiKey, imageBase64, note || undefined);
       const now = new Date();
       onAdd({
-        id: uid(),
-        mealTitle: r.mealTitle,
-        totalCalories: r.totalCalories,
-        totalProteinG: r.totalProteinG || 0,
-        ingredients: r.ingredients || [],
-        summary: r.summary,
-        imageBase64,
-        time: now.toLocaleTimeString("en-US", {hour:"numeric",minute:"2-digit"}),
-        addedAt: now.getTime(),
-        emoji: null
+        id:uid(), mealTitle:r.mealTitle, totalCalories:r.totalCalories,
+        totalProteinG:r.totalProteinG||0, ingredients:r.ingredients||[],
+        summary:r.summary, imageBase64,
+        time:now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}),
+        addedAt:now.getTime(), emoji:null
       });
     } catch(e) {
-      setError(e.message || "Analysis failed — check your API key and try again");
+      setError(e.message || "Analysis failed — check Settings ⚙️");
       setSubmitting(false);
     }
   };
 
-  if(submitting) return <Spinner text="Analyzing with Claude…"/>;
-  if(micPhase === "transcribing") return <Spinner text="Transcribing…"/>;
-
-  const isRec = micPhase === "recording";
-  const isReq = micPhase === "requesting";
+  if (submitting) return <Spinner text="Analyzing with Claude…"/>;
 
   return <div style={{height:"100%",background:C.bg,display:"flex",flexDirection:"column"}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(env(safe-area-inset-top,44px) + 8px) 16px 8px",flexShrink:0}}>
-      <button style={{width:40,height:40,borderRadius:11,background:C.hover,border:`1px solid ${C.border}`,color:C.text,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>{stopMic();onBack();}}><IcBack/></button>
+      <button style={{width:40,height:40,borderRadius:11,background:C.hover,border:`1px solid ${C.border}`,color:C.text,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{speech.stop();onBack();}}><IcBack/></button>
       <span style={{fontSize:16,fontWeight:700,color:C.text}}>Add Meal Photo</span>
       <div style={{width:40}}/>
     </div>
@@ -801,47 +663,36 @@ function PhotoScreen({apiKey,imageBase64,imagePreview,onBack,onAdd}) {
       <img src={imagePreview} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:16,border:`1px solid ${C.border}`,display:"block"}} alt=""/>
     </div>}
     <div style={{flexShrink:0,padding:"0 16px calc(env(safe-area-inset-bottom,16px) + 12px)",display:"flex",flexDirection:"column",gap:8}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:C.surface,borderRadius:14,border:`1px solid ${C.border}`}}>
-        <div onClick={isRec ? stopMic : startMic} style={{width:42,height:42,borderRadius:"50%",flexShrink:0,background:isRec?"rgba(255,68,68,0.12)":isReq?"rgba(255,255,255,0.04)":"rgba(74,230,138,0.1)",border:`2px solid ${isRec?C.red:isReq?C.border:C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:isReq?"default":"pointer",transition:"all 0.3s"}}>
-          <div style={{color:isRec?C.red:isReq?C.dim:C.accent}}>{isRec?<IcStop size={14}/>:<IcMic size={18}/>}</div>
+      {speech.supported&&(
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:C.surface,borderRadius:14,border:`1px solid ${C.border}`}}>
+          <div onClick={speech.listening?speech.stop:speech.start}
+            style={{width:40,height:40,borderRadius:"50%",flexShrink:0,background:speech.listening?"rgba(255,68,68,0.12)":"rgba(74,230,138,0.1)",border:`2px solid ${speech.listening?C.red:C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"all 0.3s"}}>
+            <div style={{color:speech.listening?C.red:C.accent}}>{speech.listening?<IcStop size={14}/>:<IcMic size={18}/>}</div>
+          </div>
+          {speech.listening
+            ?<div style={{flex:1,height:36}}><VoiceVisualizer active={true}/></div>
+            :<span style={{flex:1,fontSize:13,color:C.sub}}>Tap mic to add voice notes (optional)</span>
+          }
         </div>
-        {isRec
-          ? <div style={{flex:1,height:36}}><VoiceVisualizer active={true}/></div>
-          : <span style={{flex:1,fontSize:13,fontWeight:500,color:C.sub}}>{isReq?"Starting mic…":"Tap mic to add a voice description (optional)"}</span>
-        }
-        {isRec&&<span style={{fontSize:12,color:C.red,fontWeight:600,flexShrink:0}}>{fmtTime(elapsed)}</span>}
-      </div>
-      <textarea
-        style={{width:"100%",height:72,background:C.surface,border:`1px solid ${transcript?C.aMid:C.border}`,borderRadius:12,color:transcript?C.text:C.sub,fontSize:13,padding:"10px 14px",resize:"none",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",lineHeight:1.55}}
-        placeholder={"Add details (optional) — ingredients, portions, sauce…"}
-        value={transcript}
-        onChange={e=>setTranscript(e.target.value)}
-      />
-      {error&&<p style={{color:C.red,fontSize:12,textAlign:"center",margin:"-4px 0",lineHeight:1.5}}>{error}</p>}
-      <button style={{width:"100%",background:C.accent,border:"none",borderRadius:13,color:C.bg,fontSize:15,fontWeight:700,padding:"14px",cursor:"pointer"}} onClick={submit}>
+      )}
+      <textarea style={{width:"100%",height:68,background:C.surface,border:`1px solid ${note?C.aMid:C.border}`,borderRadius:12,color:note?C.text:C.sub,fontSize:13,padding:"10px 14px",resize:"none",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",lineHeight:1.55}}
+        placeholder="Add notes (optional) — ingredients, portions, brand…"
+        value={note} onChange={e=>setNote(e.target.value)}/>
+      {error&&<p style={{color:C.red,fontSize:12,textAlign:"center",lineHeight:1.5}}>{error}</p>}
+      <button style={{width:"100%",background:C.accent,border:"none",borderRadius:13,color:C.bg,fontSize:15,fontWeight:700,padding:"14px"}} onClick={submit}>
         Analyze & Add →
       </button>
     </div>
   </div>;
 }
 
-// ─── Swipeable ingredient row ─────────────────────────────────────────────────
+// ─── SwipeIngRow ──────────────────────────────────────────────────────────────
 function SwipeIngRow({ing,idx,editIdx,ingVal,setIngVal,setEditIdx,commitIng,onDelete}) {
-  const [swipeX,setSwipeX]=useState(0);
-  const [swiping,setSwiping]=useState(false);
-  const tx=useRef(0),ty=useRef(0);
-  const THRESHOLD=70;
+  const [swipeX,setSwipeX]=useState(0);const[swiping,setSwiping]=useState(false);
+  const tx=useRef(0),ty=useRef(0);const THRESHOLD=70;
   const onTS=e=>{tx.current=e.touches[0].clientX;ty.current=e.touches[0].clientY;setSwiping(false);};
-  const onTM=e=>{
-    const dx=e.touches[0].clientX-tx.current;
-    const dy=Math.abs(e.touches[0].clientY-ty.current);
-    if(dy>20&&Math.abs(dx)<20)return;
-    if(dx<0){setSwiping(true);setSwipeX(Math.max(dx,-(THRESHOLD+20)));}
-  };
-  const onTE=()=>{
-    if(swipeX<=-THRESHOLD)onDelete(idx);
-    else{setSwipeX(0);setSwiping(false);}
-  };
+  const onTM=e=>{const dx=e.touches[0].clientX-tx.current;const dy=Math.abs(e.touches[0].clientY-ty.current);if(dy>20&&Math.abs(dx)<20)return;if(dx<0){setSwiping(true);setSwipeX(Math.max(dx,-(THRESHOLD+20)));}};
+  const onTE=()=>{if(swipeX<=-THRESHOLD)onDelete(idx);else{setSwipeX(0);setSwiping(false);}};
   return <div style={{position:"relative",overflow:"hidden",borderTop:`1px solid ${C.border}`}}>
     <div style={{position:"absolute",inset:0,background:C.red,display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:16}}>
       <span style={{color:"#fff",fontSize:12,fontWeight:700,marginRight:4}}>Delete</span><IcTrash/>
@@ -865,20 +716,15 @@ function DetailScreen({meal,onBack,onUpdate,onDelete}) {
   const [editIdx,setEditIdx]=useState(null);
   const [ingVal,setIngVal]=useState("");
   const isWorkout=meal.type==="workout";
-
   const commitTotal=()=>{const n=parseInt(totalVal);if(!isNaN(n)&&n>=0)onUpdate({...meal,totalCalories:n,ingredients:ings});else setTotalVal(String(meal.totalCalories));setEditTotal(false);};
   const commitIng=idx=>{const n=parseInt(ingVal);if(!isNaN(n)&&n>=0){const next=ings.map((x,i)=>i===idx?{...x,calories:n}:x);setIngs(next);const tot=next.reduce((s,x)=>s+x.calories,0);setTotalVal(String(tot));onUpdate({...meal,totalCalories:tot,ingredients:next});}setEditIdx(null);};
-
   return <div style={{height:"100%",background:C.bg,overflowY:"auto",paddingBottom:48}}>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"env(safe-area-inset-top,44px) 16px 12px",paddingTop:"calc(env(safe-area-inset-top,44px) + 12px)"}}>
-      <button style={{width:44,height:44,borderRadius:12,background:C.hover,border:`1px solid ${C.border}`,color:C.text,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={onBack}><IcBack/></button>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(env(safe-area-inset-top,44px) + 12px) 16px 12px"}}>
+      <button style={{width:44,height:44,borderRadius:12,background:C.hover,border:`1px solid ${C.border}`,color:C.text,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onBack}><IcBack/></button>
       <span style={{fontSize:16,fontWeight:700,color:C.text}}>{isWorkout?"Workout":"Meal Details"}</span>
-      <button style={{width:44,height:44,borderRadius:12,background:C.rDim,border:`1px solid ${C.rMid}`,color:C.red,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>onDelete(meal.id)}><IcTrash/></button>
+      <button style={{width:44,height:44,borderRadius:12,background:C.rDim,border:`1px solid ${C.rMid}`,color:C.red,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>onDelete(meal.id)}><IcTrash/></button>
     </div>
-    {!isWorkout&&(meal.imageBase64
-      ?<img src={`data:image/jpeg;base64,${meal.imageBase64}`} style={{width:"100%",height:250,objectFit:"cover"}} alt=""/>
-      :<div style={{width:"100%",height:180,background:C.surface,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:56}}>{meal.emoji||"🍽️"}</span></div>
-    )}
+    {!isWorkout&&(meal.imageBase64?<img src={`data:image/jpeg;base64,${meal.imageBase64}`} style={{width:"100%",height:250,objectFit:"cover"}} alt=""/>:<div style={{width:"100%",height:180,background:C.surface,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:56}}>{meal.emoji||"🍽️"}</span></div>)}
     {isWorkout&&<div style={{width:"100%",height:140,background:C.oDim,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:64}}>🔥</span></div>}
     <div style={{padding:"20px 20px 40px"}}>
       <h2 style={{fontSize:22,fontWeight:800,color:isWorkout?C.orange:C.text,marginBottom:6,letterSpacing:"-0.5px"}}>{meal.mealTitle}</h2>
@@ -899,13 +745,7 @@ function DetailScreen({meal,onBack,onUpdate,onDelete}) {
       </div>
       {!isWorkout&&ings.length>0&&<div style={{background:C.surface,borderRadius:16,border:`1px solid ${C.border}`,overflow:"hidden"}}>
         <p style={{fontSize:11,fontWeight:700,color:C.sub,textTransform:"uppercase",letterSpacing:"1px",padding:"12px 16px 8px"}}>Breakdown</p>
-        {ings.map((ing,idx)=><SwipeIngRow key={idx} ing={ing} idx={idx} editIdx={editIdx} ingVal={ingVal} setIngVal={setIngVal} setEditIdx={setEditIdx} commitIng={commitIng} onDelete={idx=>{
-          const next=ings.filter((_,i)=>i!==idx);
-          setIngs(next);
-          const tot=next.reduce((s,x)=>s+x.calories,0);
-          setTotalVal(String(tot));
-          onUpdate({...meal,totalCalories:tot,ingredients:next});
-        }}/>)}
+        {ings.map((ing,idx)=><SwipeIngRow key={idx} ing={ing} idx={idx} editIdx={editIdx} ingVal={ingVal} setIngVal={setIngVal} setEditIdx={setEditIdx} commitIng={commitIng} onDelete={i=>{const next=ings.filter((_,j)=>j!==i);setIngs(next);const tot=next.reduce((s,x)=>s+x.calories,0);setTotalVal(String(tot));onUpdate({...meal,totalCalories:tot,ingredients:next});}}/>)}
       </div>}
     </div>
   </div>;
@@ -918,93 +758,41 @@ function App() {
   const [baseGoal,setBaseGoal]=useState(()=>loadBaseGoal());
   const [selected,setSelected]=useState(null);
   const [camImg,setCamImg]=useState({b64:null,preview:null});
-
-  const dateKeyRef = useRef(fmtKey(new Date()));
-  const [, forceRender] = useState(0);
-  const bump = () => forceRender(n => n + 1);
-
-  const dateKey = dateKeyRef.current;
-  const meals = loadMeals(dateKey);
-
-  const burned = meals.filter(m=>m.type==="workout").reduce((s,m)=>s+m.totalCalories,0);
-  const effectiveGoal = baseGoal + burned;
-
-  const changeDate = (d) => {
-    const newKey = fmtKey(d);
-    if (newKey === dateKeyRef.current) return;
-    dateKeyRef.current = newKey;
-    bump();
+  const dateKeyRef=useRef(fmtKey(new Date()));
+  const [,forceRender]=useState(0);
+  const bump=()=>forceRender(n=>n+1);
+  const dateKey=dateKeyRef.current;
+  const meals=loadMeals(dateKey);
+  const burned=meals.filter(m=>m.type==="workout").reduce((s,m)=>s+m.totalCalories,0);
+  const effectiveGoal=baseGoal+burned;
+  const changeDate=d=>{const k=fmtKey(d);if(k===dateKeyRef.current)return;dateKeyRef.current=k;bump();};
+  const addMeal=m=>{recordFoodItems(m.ingredients);const k=dateKeyRef.current;saveMeals(k,[...loadMeals(k),m]);setScreen("home");bump();};
+  const addWorkout=w=>{const k=dateKeyRef.current;saveMeals(k,[...loadMeals(k),w]);bump();};
+  const updateMeal=m=>{recordFoodItems(m.ingredients);const k=dateKeyRef.current;saveMeals(k,loadMeals(k).map(x=>x.id===m.id?m:x));setSelected(m);bump();};
+  const deleteMeal=id=>{const k=dateKeyRef.current;saveMeals(k,loadMeals(k).filter(x=>x.id!==id));setScreen("home");bump();};
+  const saveApiKey=k=>{saveKey(k);setApiKey(k);};
+  const selectMeal=m=>{
+    if(m._quickEdit){const k=dateKeyRef.current;saveMeals(k,loadMeals(k).map(x=>x.id===m.id?{...x,totalCalories:m._newCal}:x));bump();return;}
+    if(m._delete){const k=dateKeyRef.current;saveMeals(k,loadMeals(k).filter(x=>x.id!==m.id));bump();return;}
+    setSelected(m);setScreen("detail");
   };
 
-  const addMeal = m => {
-    recordFoodItems(m.ingredients);
-    const key = dateKeyRef.current;
-    const next = [...loadMeals(key), m];
-    saveMeals(key, next);
-    setScreen("home");
-    bump();
-  };
-
-  const addWorkout = w => {
-    const key = dateKeyRef.current;
-    const next = [...loadMeals(key), w];
-    saveMeals(key, next);
-    bump();
-  };
-
-  const updateMeal = m => {
-    recordFoodItems(m.ingredients);
-    const key = dateKeyRef.current;
-    const next = loadMeals(key).map(x => x.id===m.id ? m : x);
-    saveMeals(key, next);
-    setSelected(m);
-    bump();
-  };
-
-  const deleteMeal = id => {
-    const key = dateKeyRef.current;
-    const next = loadMeals(key).filter(x => x.id!==id);
-    saveMeals(key, next);
-    setScreen("home");
-    bump();
-  };
-
-  const selectMeal = m => {
-    if(m._quickEdit){
-      const key = dateKeyRef.current;
-      const next = loadMeals(key).map(x => x.id===m.id ? {...x,totalCalories:m._newCal} : x);
-      saveMeals(key, next);
-      bump();
-      return;
-    }
-    if(m._delete){
-      const key = dateKeyRef.current;
-      const next = loadMeals(key).filter(x => x.id!==m.id);
-      saveMeals(key, next);
-      bump();
-      return;
-    }
-    setSelected(m); setScreen("detail");
-  };
-
-  if(!apiKey) return <ApiKeyScreen onSave={k=>{saveKey(k);setApiKey(k);}}/>;
+  if (!apiKey) return <ApiKeyScreen onSave={saveApiKey}/>;
 
   return <div style={{height:"100%"}}>
     {screen==="home"&&<HomeScreen
       onOpenCamera={(b64,preview)=>{setCamImg({b64,preview});setScreen("camera");}}
       onOpenVoice={()=>setScreen("voice")}
-      onAddWorkout={addWorkout}
-      onSelectMeal={selectMeal}
-      meals={meals}
-      goal={effectiveGoal}
-      baseGoal={baseGoal}
+      onAddWorkout={addWorkout} onSelectMeal={selectMeal}
+      onOpenSettings={()=>setScreen("settings")}
+      meals={meals} goal={effectiveGoal} baseGoal={baseGoal}
       setBaseGoal={n=>{setBaseGoal(n);saveBaseGoal(n);}}
-      date={new Date(dateKey+"T12:00:00")}
-      setDate={changeDate}
+      date={new Date(dateKey+"T12:00:00")} setDate={changeDate}
     />}
     {screen==="camera"&&<PhotoScreen apiKey={apiKey} imageBase64={camImg.b64} imagePreview={camImg.preview} onBack={()=>setScreen("home")} onAdd={addMeal}/>}
     {screen==="voice"&&<VoiceScreen apiKey={apiKey} onBack={()=>setScreen("home")} onAdd={addMeal}/>}
     {screen==="detail"&&selected&&<DetailScreen meal={selected} onBack={()=>setScreen("home")} onUpdate={updateMeal} onDelete={deleteMeal}/>}
+    {screen==="settings"&&<SettingsScreen apiKey={apiKey} onSave={saveApiKey} onBack={()=>setScreen("home")}/>}
   </div>;
 }
 

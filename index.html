@@ -33,8 +33,27 @@ const { useState, useEffect, useRef, useCallback } = React;
 
 const ls = {
   get: k => { try { return localStorage.getItem(k); } catch { return null; } },
-  set: (k,v) => { try { localStorage.setItem(k,v); } catch {} }
+  set: (k,v) => { try { localStorage.setItem(k,v); return true; } catch(e) { console.warn("localStorage write failed:",e); return false; } }
 };
+
+// Downscale a full base64 image to a tiny thumbnail for localStorage.
+// Keeps stored size ~4-8KB vs 500KB+ for full photos — avoids QuotaExceededError.
+function makeThumbnail(base64, mimeType, size=120, quality=0.7) {
+  return new Promise(resolve => {
+    try {
+      const img = new Image();
+      img.onload = () => {
+        const s = Math.min(size/img.width, size/img.height, 1);
+        const w = Math.round(img.width*s), h = Math.round(img.height*s);
+        const c = document.createElement("canvas"); c.width=w; c.height=h;
+        c.getContext("2d").drawImage(img,0,0,w,h);
+        resolve(c.toDataURL("image/jpeg", quality).split(",")[1]);
+      };
+      img.onerror = () => resolve(null);
+      img.src = `data:${mimeType};base64,${base64}`;
+    } catch { resolve(null); }
+  });
+}
 const loadMeals = d => { try { return JSON.parse(ls.get(`jct:m:${d}`) || "[]"); } catch { return []; } };
 const saveMeals = (d,m) => ls.set(`jct:m:${d}`, JSON.stringify(m));
 const loadBaseGoal = () => parseInt(ls.get("jct:basegoal") || "1600");
@@ -806,7 +825,18 @@ function App() {
   const burned=meals.filter(m=>m.type==="workout").reduce((s,m)=>s+m.totalCalories,0);
   const effectiveGoal=baseGoal+burned;
   const changeDate=d=>{const k=fmtKey(d);if(k===dateKeyRef.current)return;dateKeyRef.current=k;bump();};
-  const addMeal=m=>{recordFoodItems(m.ingredients);const k=dateKeyRef.current;saveMeals(k,[...loadMeals(k),m]);setScreen("home");bump();};
+  const addMeal=async m=>{
+    recordFoodItems(m.ingredients);
+    const k=dateKeyRef.current;
+    let storable=m;
+    if(m.imageBase64){
+      const thumb=await makeThumbnail(m.imageBase64, m.imageMime||"image/jpeg", 120, 0.7);
+      storable={...m, imageBase64:thumb||null};
+    }
+    saveMeals(k,[...loadMeals(k),storable]);
+    setScreen("home");
+    bump();
+  };
   const addWorkout=w=>{const k=dateKeyRef.current;saveMeals(k,[...loadMeals(k),w]);bump();};
   const updateMeal=m=>{recordFoodItems(m.ingredients);const k=dateKeyRef.current;saveMeals(k,loadMeals(k).map(x=>x.id===m.id?m:x));setSelected(m);bump();};
   const deleteMeal=id=>{const k=dateKeyRef.current;saveMeals(k,loadMeals(k).filter(x=>x.id!==id));setScreen("home");bump();};

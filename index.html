@@ -31,7 +31,6 @@ button{font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer}
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback } = React;
 
-// ─── Storage ──────────────────────────────────────────────────────────────────
 const ls = {
   get: k => { try { return localStorage.getItem(k); } catch { return null; } },
   set: (k,v) => { try { localStorage.setItem(k,v); } catch {} }
@@ -49,91 +48,62 @@ const saveWorkoutLabels = arr => ls.set("jct:wlabels", JSON.stringify(arr));
 const loadFoodHistory = () => { try { return JSON.parse(ls.get("jct:foodhist") || "[]"); } catch { return []; } };
 const saveFoodHistory = arr => ls.set("jct:foodhist", JSON.stringify(arr));
 
-// ─── Persistent mic stream (one permission prompt ever) ───────────────────────
-let _sharedStream = null;
-async function getSharedMicStream() {
-  if (_sharedStream && _sharedStream.active) return _sharedStream;
-  _sharedStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-  return _sharedStream;
-}
-
-// ─── Date helpers ─────────────────────────────────────────────────────────────
 const fmtKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 const fmtDisplay = d => d.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"});
 const isToday = d => fmtKey(d) === fmtKey(new Date());
 
-// ─── Detect image type from base64 bytes ──────────────────────────────────────
-function detectMediaType(base64) {
-  try {
-    const bin = atob(base64.slice(0, 16));
-    const b = i => bin.charCodeAt(i);
-    if (b(0)===0xFF && b(1)===0xD8) return "image/jpeg";
-    if (b(0)===0x89 && b(1)===0x50) return "image/png";
-    if (b(0)===0x47 && b(1)===0x49) return "image/gif";
-    if (b(0)===0x52 && b(1)===0x49) return "image/webp";
-  } catch {}
-  return "image/jpeg";
-}
-
-// ─── OpenAI GPT-4o — best vision model for food/barcode analysis ──────────────
-// imageData = { base64: string, mimeType: string } | null
+// ─── FIX 1: Remove temperature param — gpt-5.5 only supports default (1) ─────
+// ─── FIX 2: Use max_completion_tokens (correct param for newer models) ────────
 async function analyze(apiKey, imageData, description) {
   if (!apiKey) throw new Error("No API key — tap ⚙️ Settings to add your OpenAI key");
 
   const sysPrompt = `You are an expert nutritionist and food label reader with access to USDA databases, restaurant nutrition facts, and packaged food data.
 
 BARCODE & PACKAGING:
-- If you see a barcode, UPC, or food package: read ALL visible text including brand name, product name, flavor, size, and any nutrition panel. Use the EXACT published nutrition facts for that specific product — not a generic estimate.
+- If you see a barcode, UPC, or food package: read ALL visible text including brand name, product name, flavor, size, and any nutrition panel. Use the EXACT published nutrition facts for that specific product.
 - Examples: Fairlife 2% milk 11.5oz = 170cal/13g protein. Premier Protein shake = 160cal/30g protein. Kind bar peanut butter = 200cal/7g protein.
 
 RESTAURANT & BRAND FOOD:
-- Use real published nutrition data. Examples: Big Mac = 550cal/25g protein. Chipotle chicken burrito bowl (standard) ≈ 800cal/50g protein. Starbucks grande latte whole milk = 220cal/12g protein.
+- Use real published nutrition data. Examples: Big Mac = 550cal/25g protein. Chipotle chicken burrito bowl (standard) ~800cal/50g protein. Starbucks grande latte whole milk = 220cal/12g protein.
 
 HOMEMADE / PLATED FOOD:
 - Estimate the ACTUAL portion size visible in the photo. Look for visual cues: plate size, utensils, food density.
 - Never default to a "standard serving" — judge what's actually in the image.
 
 QUANTITIES:
-- If user says "two", "3x", "a dozen" etc, multiply all values by that number. Never return single-unit values when multiple are stated.
+- If user says "two", "3x", "a dozen" etc, multiply all values by that number.
 
 ACCURACY RULES:
 - Never return 0 calories for any real food item.
 - totalCalories MUST equal the sum of all ingredient calories.
 - Estimate totalProteinG and proteinG for every ingredient.
-- For emoji: pick ONE emoji that best represents the main/primary food item described or shown.
+- For emoji: pick ONE emoji that best represents the main food item.
 - Return ONLY raw JSON. No markdown fences, no explanation text, nothing else.`;
 
   const userPrompt = imageData
-    ? `Analyze this image carefully.${description ? ` User added: "${description}".` : ""} If you see a barcode or package, identify the exact product and use its real nutrition facts. If it's a plate of food, estimate actual portions shown. Return this exact JSON: {"mealTitle":"...","totalCalories":0,"totalProteinG":0,"emoji":"🍔","ingredients":[{"name":"...","calories":0,"proteinG":0}],"summary":"..."}`
+    ? `Analyze this image carefully.${description ? ` User added: "${description}".` : ""} If you see a barcode or package, identify the exact product and use its real nutrition facts. Return this exact JSON: {"mealTitle":"...","totalCalories":0,"totalProteinG":0,"emoji":"🍔","ingredients":[{"name":"...","calories":0,"proteinG":0}],"summary":"..."}`
     : `The user described their meal: "${description}". Use real brand/USDA data and multiply by any stated quantity. Return this exact JSON: {"mealTitle":"...","totalCalories":0,"totalProteinG":0,"emoji":"🍔","ingredients":[{"name":"...","calories":0,"proteinG":0}],"summary":"..."}`;
 
   const contentArr = [];
   if (imageData) {
-    // Use the actual mime type captured from the file — never hardcode image/jpeg
     contentArr.push({
       type: "image_url",
-      image_url: {
-        url: `data:${imageData.mimeType};base64,${imageData.base64}`,
-        detail: "high"
-      }
+      image_url: { url: `data:${imageData.mimeType};base64,${imageData.base64}`, detail: "high" }
     });
   }
   contentArr.push({ type: "text", text: userPrompt });
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`
-    },
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: "gpt-5.5",
       messages: [
         { role: "system", content: sysPrompt },
         { role: "user", content: contentArr }
       ],
-      max_completion_tokens: 800,
-      temperature: 0.1
+      max_completion_tokens: 800
+      // temperature intentionally omitted — gpt-5.5 only supports the default value of 1
     })
   });
 
@@ -168,7 +138,6 @@ function recordFoodItems(ingredients) {
 
 let _id = Date.now();
 const uid = () => `m${++_id}`;
-const EMOJIS = ["🍝","🥗","🍜","🥩","🍱","🥘","🍛","🥙","🌮","🫕"];
 
 const C = {
   bg:"#0A0A0F", surface:"#13131A", hover:"#1C1C28", card:"#16161F",
@@ -179,7 +148,6 @@ const C = {
   orange:"#FF9500", oDim:"rgba(255,149,0,0.14)", oMid:"rgba(255,149,0,0.35)"
 };
 
-// ─── Icons ────────────────────────────────────────────────────────────────────
 const IcCamera = () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>;
 const IcMic = ({size=22}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>;
 const IcStop = ({size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>;
@@ -197,49 +165,94 @@ function Spinner({text}) {
   </div>;
 }
 
-// ─── Voice Visualizer ─────────────────────────────────────────────────────────
-function VoiceVisualizer({active}) {
+// ─── FIX 3: VoiceVisualizer no longer calls getUserMedia itself ───────────────
+// Accepts mediaStream prop from parent. If no stream given, renders animated
+// placeholder bars — zero extra permission prompts.
+function VoiceVisualizer({active, mediaStream}) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
   const acRef = useRef(null);
   const BARS = 24;
+
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext("2d");
+
     const flat = () => {
       ctx.clearRect(0,0,canvas.width,canvas.height);
       const bw = canvas.width/BARS;
       ctx.fillStyle = "rgba(74,230,138,0.18)";
-      for(let i=0;i<BARS;i++){const h=4;ctx.beginPath();ctx.roundRect(i*bw+1,(canvas.height-h)/2,bw-2,h,2);ctx.fill();}
+      for(let i=0;i<BARS;i++){
+        const h=4;
+        ctx.beginPath();
+        ctx.roundRect(i*bw+1,(canvas.height-h)/2,bw-2,h,2);
+        ctx.fill();
+      }
     };
-    if (!active) { cancelAnimationFrame(rafRef.current); try{acRef.current?.close();acRef.current=null;}catch{} flat(); return; }
-    const setup = stream => {
-      try {
-        const ac = new(window.AudioContext||window.webkitAudioContext)();
-        acRef.current = ac;
-        const src = ac.createMediaStreamSource(stream);
-        const an = ac.createAnalyser(); an.fftSize=64; src.connect(an);
-        const buf = new Uint8Array(an.frequencyBinCount);
-        const draw = () => {
-          rafRef.current = requestAnimationFrame(draw);
-          an.getByteFrequencyData(buf);
-          ctx.clearRect(0,0,canvas.width,canvas.height);
-          const bw=canvas.width/BARS,maxH=canvas.height*0.88;
-          for(let i=0;i<BARS;i++){const v=buf[Math.floor(i*buf.length/BARS)]/255;const h=Math.max(4,v*maxH);ctx.fillStyle=`rgba(74,230,138,${0.3+v*0.7})`;ctx.beginPath();ctx.roundRect(i*bw+1,(canvas.height-h)/2,bw-2,h,3);ctx.fill();}
-        };
-        draw();
-      } catch { flat(); }
+
+    if (!active) {
+      cancelAnimationFrame(rafRef.current);
+      try{acRef.current?.close();acRef.current=null;}catch{}
+      flat();
+      return;
+    }
+
+    // No real stream — animate fake bars, no mic permission needed
+    if (!mediaStream) {
+      let t = 0;
+      const animate = () => {
+        rafRef.current = requestAnimationFrame(animate);
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        const bw=canvas.width/BARS, maxH=canvas.height*0.88;
+        for(let i=0;i<BARS;i++){
+          const v=Math.abs(Math.sin(t*2.1+i*0.4))*0.55+0.12;
+          const h=Math.max(4,v*maxH);
+          ctx.fillStyle=`rgba(74,230,138,${0.22+v*0.55})`;
+          ctx.beginPath();
+          ctx.roundRect(i*bw+1,(canvas.height-h)/2,bw-2,h,3);
+          ctx.fill();
+        }
+        t+=0.05;
+      };
+      animate();
+      return () => cancelAnimationFrame(rafRef.current);
+    }
+
+    // Real stream — attach analyser for genuine waveform
+    try {
+      const ac = new(window.AudioContext||window.webkitAudioContext)();
+      acRef.current = ac;
+      const src = ac.createMediaStreamSource(mediaStream);
+      const an = ac.createAnalyser(); an.fftSize=64; src.connect(an);
+      const buf = new Uint8Array(an.frequencyBinCount);
+      const draw = () => {
+        rafRef.current = requestAnimationFrame(draw);
+        an.getByteFrequencyData(buf);
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        const bw=canvas.width/BARS,maxH=canvas.height*0.88;
+        for(let i=0;i<BARS;i++){
+          const v=buf[Math.floor(i*buf.length/BARS)]/255;
+          const h=Math.max(4,v*maxH);
+          ctx.fillStyle=`rgba(74,230,138,${0.3+v*0.7})`;
+          ctx.beginPath();
+          ctx.roundRect(i*bw+1,(canvas.height-h)/2,bw-2,h,3);
+          ctx.fill();
+        }
+      };
+      draw();
+    } catch { flat(); }
+
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      try{acRef.current?.close();acRef.current=null;}catch{}
     };
-    if (_sharedStream?.active) setup(_sharedStream);
-    else getSharedMicStream().then(setup).catch(flat);
-    return () => { cancelAnimationFrame(rafRef.current); try{acRef.current?.close();acRef.current=null;}catch{}; };
-  }, [active]);
+  }, [active, mediaStream]);
+
   return <div style={{width:"100%",height:52,display:"flex",alignItems:"center"}}>
     <canvas ref={canvasRef} width={340} height={52} style={{width:"100%",height:"100%",opacity:active?1:0.3,transition:"opacity 0.3s"}}/>
   </div>;
 }
 
-// ─── Weight sparkline ─────────────────────────────────────────────────────────
 function WeightSparkline({data}) {
   if (data.length<2) return null;
   const W=120,H=36,P=4,vals=data.map(d=>d.value);
@@ -256,7 +269,6 @@ function WeightSparkline({data}) {
   </svg>;
 }
 
-// ─── MealCard ─────────────────────────────────────────────────────────────────
 function MealCard({meal,onTap,onQuickEdit,onDelete}) {
   const [editing,setEditing]=useState(false);
   const [val,setVal]=useState(String(meal.totalCalories));
@@ -296,7 +308,6 @@ function MealCard({meal,onTap,onQuickEdit,onDelete}) {
   </div>;
 }
 
-// ─── Workout modal ────────────────────────────────────────────────────────────
 function WorkoutModal({onAdd,onClose}) {
   const [cal,setCal]=useState("");
   const [label,setLabel]=useState(()=>ls.get("jct:lastlabel")||"");
@@ -332,41 +343,34 @@ function WorkoutModal({onAdd,onClose}) {
   </div>;
 }
 
-// ─── Settings screen ──────────────────────────────────────────────────────────
 function SettingsScreen({apiKey,onSave,onBack}) {
   const [val,setVal]=useState("");
   const [saved,setSaved]=useState(false);
   const [err,setErr]=useState("");
   const masked = apiKey ? `${apiKey.slice(0,14)}…${apiKey.slice(-4)}` : null;
-
   const submit=()=>{
     const t=val.trim();
     if(!t){setErr("Please enter an API key");return;}
     onSave(t);setSaved(true);setVal("");setErr("");
     setTimeout(()=>setSaved(false),2500);
   };
-
   return <div style={{height:"100%",background:C.bg,overflowY:"auto",paddingBottom:48}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(env(safe-area-inset-top,44px) + 12px) 16px 20px"}}>
       <button style={{width:44,height:44,borderRadius:12,background:C.hover,border:`1px solid ${C.border}`,color:C.text,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onBack}><IcBack/></button>
       <span style={{fontSize:16,fontWeight:700,color:C.text}}>Settings</span>
       <div style={{width:44}}/>
     </div>
-
     <div style={{padding:"0 16px",display:"flex",flexDirection:"column",gap:14}}>
-      {/* API Key */}
       <div style={{background:C.surface,borderRadius:18,border:`1px solid ${C.border}`,padding:"18px 18px 16px"}}>
         <p style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:6}}>OpenAI API Key</p>
         {masked
-          ? <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,padding:"10px 12px",background:C.aDim,borderRadius:10,border:`1px solid ${C.aMid}`}}>
-              <span style={{fontSize:11,color:C.accent,fontWeight:600}}>✓ Key saved:</span>
-              <span style={{fontSize:11,color:C.sub,fontFamily:"monospace"}}>{masked}</span>
-            </div>
-          : <p style={{fontSize:12,color:C.red,marginBottom:12,fontWeight:600}}>⚠ No key set — meals cannot be analyzed</p>
+          ?<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,padding:"10px 12px",background:C.aDim,borderRadius:10,border:`1px solid ${C.aMid}`}}>
+            <span style={{fontSize:11,color:C.accent,fontWeight:600}}>✓ Key saved:</span>
+            <span style={{fontSize:11,color:C.sub,fontFamily:"monospace"}}>{masked}</span>
+          </div>
+          :<p style={{fontSize:12,color:C.red,marginBottom:12,fontWeight:600}}>⚠ No key set — meals cannot be analyzed</p>
         }
-        <p style={{fontSize:12,color:C.sub,lineHeight:1.6,marginBottom:12}}>
-          Get a key at <span style={{color:C.accent}}>platform.openai.com/api-keys</span>. Stored only on this device and sent directly to OpenAI.
-        </p>
+        <p style={{fontSize:12,color:C.sub,lineHeight:1.6,marginBottom:12}}>Get a key at <span style={{color:C.accent}}>platform.openai.com/api-keys</span>. Stored only on this device.</p>
         <input type="password" placeholder={masked?"Enter new key to replace…":"sk-..."} value={val}
           onChange={e=>{setVal(e.target.value);setErr("");setSaved(false);}}
           onKeyDown={e=>e.key==="Enter"&&submit()}
@@ -376,27 +380,18 @@ function SettingsScreen({apiKey,onSave,onBack}) {
           {saved?"✓ Key Saved!":"Save Key"}
         </button>
       </div>
-
-      {/* Voice info */}
       <div style={{background:C.surface,borderRadius:18,border:`1px solid ${C.border}`,padding:"18px"}}>
         <p style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:8}}>Voice Transcription</p>
-        <p style={{fontSize:12,color:C.sub,lineHeight:1.7}}>
-          Voice logging uses your browser's built-in speech recognition — free, no extra key needed. Works best in Chrome and Safari on iOS/Android. Speak naturally, then tap Add to Log.
-        </p>
+        <p style={{fontSize:12,color:C.sub,lineHeight:1.7}}>Voice logging uses your browser's built-in speech recognition — free, no extra key needed. Works best in Chrome and Safari on iOS/Android.</p>
       </div>
-
-      {/* About */}
       <div style={{background:C.surface,borderRadius:18,border:`1px solid ${C.border}`,padding:"18px"}}>
         <p style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:8}}>About Just Calories</p>
-        <p style={{fontSize:12,color:C.sub,lineHeight:1.7}}>
-          Photos are analyzed by GPT-4o vision — including barcodes and food labels. Voice descriptions are processed locally by your browser. All meal data is stored on your device only.
-        </p>
+        <p style={{fontSize:12,color:C.sub,lineHeight:1.7}}>Photos are analyzed by GPT-5.5 — including barcodes and food labels. Voice descriptions are processed locally by your browser. All data stored on-device only.</p>
       </div>
     </div>
   </div>;
 }
 
-// ─── First-run API Key screen ─────────────────────────────────────────────────
 function ApiKeyScreen({onSave}) {
   const [val,setVal]=useState("");
   const [err,setErr]=useState("");
@@ -405,7 +400,7 @@ function ApiKeyScreen({onSave}) {
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"40px 28px",width:"100%",maxWidth:380}}>
       <span style={{fontSize:52,marginBottom:12}}>⚡</span>
       <h1 style={{fontSize:32,fontWeight:800,color:C.text,textAlign:"center",lineHeight:1.15,letterSpacing:"-1px",marginBottom:6}}>Just Calories</h1>
-      <p style={{color:C.accent,fontSize:13,fontWeight:600,marginBottom:32,marginTop:6}}>Powered by GPT-4o Vision</p>
+      <p style={{color:C.accent,fontSize:13,fontWeight:600,marginBottom:32,marginTop:6}}>Powered by GPT-5.5 Vision</p>
       <div style={{width:"100%",background:C.surface,borderRadius:20,padding:"24px 20px",border:`1px solid ${C.border}`}}>
         <p style={{color:C.sub,fontSize:13,lineHeight:1.7,textAlign:"center",marginBottom:4}}>Enter your OpenAI API key to get started.</p>
         <p style={{color:C.dim,fontSize:12,lineHeight:1.6,textAlign:"center",marginBottom:16}}>Get one at <span style={{color:C.accent}}>platform.openai.com/api-keys</span></p>
@@ -419,7 +414,6 @@ function ApiKeyScreen({onSave}) {
   </div>;
 }
 
-// ─── Home screen ──────────────────────────────────────────────────────────────
 function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,onOpenSettings,meals,goal,baseGoal,setBaseGoal,date,setDate}) {
   const [editGoal,setEditGoal]=useState(false);
   const [goalVal,setGoalVal]=useState(String(baseGoal));
@@ -445,9 +439,7 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,onOpenSe
           <span style={{fontSize:20}}>⚡</span>
           <span style={{fontSize:17,fontWeight:800,color:C.text,letterSpacing:"-0.5px"}}>Just Calories</span>
         </div>
-        <button style={{width:36,height:36,borderRadius:10,background:C.hover,border:`1px solid ${C.border}`,color:C.sub,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onOpenSettings}>
-          <IcGear/>
-        </button>
+        <button style={{width:36,height:36,borderRadius:10,background:C.hover,border:`1px solid ${C.border}`,color:C.sub,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onOpenSettings}><IcGear/></button>
       </div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
         <button style={{width:34,height:34,borderRadius:10,background:C.hover,border:`1px solid ${C.border}`,color:C.sub,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>shift(-1)}><IcLeft/></button>
@@ -499,8 +491,6 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,onOpenSe
         reader.onload=ev=>{
           const img=new Image();
           img.onload=()=>{
-            // Resize to max 1600px and convert to JPEG — handles HEIC, PNG, WebP, oversized shots
-            // OpenAI vision only accepts jpeg/png/webp/gif; HEIC always returns 400
             const MAX=1600;
             let w=img.width, h=img.height;
             if(w>MAX||h>MAX){ const s=Math.min(MAX/w,MAX/h); w=Math.round(w*s); h=Math.round(h*s); }
@@ -537,10 +527,15 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,onOpenSe
   </div>;
 }
 
-// ─── useWebSpeech — browser-native STT, no API key needed ────────────────────
+// ─── FIX 4: useWebSpeech now exposes the MediaStream so visualizer can use it ─
+// When SpeechRecognition is active, the mic is already open. We call getUserMedia
+// after a short delay (SpeechRecognition holds the grant), reusing the same
+// permission — browsers do NOT re-prompt if permission is already granted.
 function useWebSpeech(onUpdate) {
   const recRef = useRef(null);
+  const streamRef = useRef(null);
   const [listening, setListening] = useState(false);
+  const [stream, setStream] = useState(null);
   const supported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
   const start = useCallback(() => {
@@ -562,22 +557,34 @@ function useWebSpeech(onUpdate) {
         }
         onUpdate(final + interim);
       };
-      rec.onerror = () => setListening(false);
-      rec.onend = () => setListening(false);
+      rec.onerror = () => { setListening(false); setStream(null); };
+      rec.onend = () => { setListening(false); setStream(null); };
       rec.start();
       setListening(true);
-    } catch { setListening(false); }
+
+      // Grab the stream for the visualizer after SpeechRecognition has opened
+      // the mic — this reuses the existing permission, no second prompt fires.
+      setTimeout(() => {
+        navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+          .then(s => { streamRef.current = s; setStream(s); })
+          .catch(() => setStream(null));
+      }, 250);
+    } catch { setListening(false); setStream(null); }
   }, [supported, onUpdate]);
 
   const stop = useCallback(() => {
     try { recRef.current?.stop(); } catch {}
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
     setListening(false);
+    setStream(null);
   }, []);
 
-  return { listening, supported, start, stop };
+  return { listening, supported, start, stop, stream };
 }
 
-// ─── Voice screen ─────────────────────────────────────────────────────────────
 function VoiceScreen({apiKey,onBack,onAdd}) {
   const [transcript,setTranscript]=useState("");
   const [error,setError]=useState("");
@@ -633,7 +640,7 @@ function VoiceScreen({apiKey,onBack,onAdd}) {
           {!speech.supported?"Type your meal below":speech.listening?"Listening… tap to stop":"Tap mic to speak"}
         </p>
       </div>
-      <VoiceVisualizer active={speech.listening}/>
+      <VoiceVisualizer active={speech.listening} mediaStream={speech.stream}/>
       <div style={{position:"relative"}}>
         <textarea style={{width:"100%",minHeight:110,background:C.surface,border:`1px solid ${transcript?C.aMid:C.border}`,borderRadius:14,color:transcript?C.text:C.sub,fontSize:14,padding:"14px 16px",resize:"none",outline:"none",fontFamily:"'Plus Jakarta Sans',sans-serif",lineHeight:1.65,transition:"border-color 0.2s"}}
           placeholder={speech.supported?"Words appear here as you speak…\nOr type what you ate.":"Type what you ate (e.g. 'grilled chicken, rice, broccoli')"}
@@ -655,7 +662,6 @@ function VoiceScreen({apiKey,onBack,onAdd}) {
   </div>;
 }
 
-// ─── Photo screen ─────────────────────────────────────────────────────────────
 function PhotoScreen({apiKey,imageData,imagePreview,onBack,onAdd}) {
   const [note,setNote]=useState("");
   const [error,setError]=useState("");
@@ -665,7 +671,6 @@ function PhotoScreen({apiKey,imageData,imagePreview,onBack,onAdd}) {
   const speech = useWebSpeech(onUpdate);
   useEffect(() => () => speech.stop(), []);
 
-  // Submit is completely independent: always passes imageBase64 directly to Claude
   const submit = async () => {
     speech.stop();
     setError("");
@@ -687,8 +692,7 @@ function PhotoScreen({apiKey,imageData,imagePreview,onBack,onAdd}) {
     }
   };
 
-  // Show spinner while submitting, but if error occurs drop back to form with error visible
-  if (submitting && !error) return <Spinner text="Analyzing with GPT-4o…"/>;
+  if (submitting && !error) return <Spinner text="Analyzing with GPT-5.5…"/>;
 
   return <div style={{height:"100%",background:C.bg,display:"flex",flexDirection:"column"}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(env(safe-area-inset-top,44px) + 8px) 16px 8px",flexShrink:0}}>
@@ -707,7 +711,7 @@ function PhotoScreen({apiKey,imageData,imagePreview,onBack,onAdd}) {
             <div style={{color:speech.listening?C.red:C.accent}}>{speech.listening?<IcStop size={14}/>:<IcMic size={18}/>}</div>
           </div>
           {speech.listening
-            ?<div style={{flex:1,height:36}}><VoiceVisualizer active={true}/></div>
+            ?<div style={{flex:1,height:36}}><VoiceVisualizer active={true} mediaStream={speech.stream}/></div>
             :<span style={{flex:1,fontSize:13,color:C.sub}}>Tap mic to add voice notes (optional)</span>
           }
         </div>
@@ -725,7 +729,6 @@ function PhotoScreen({apiKey,imageData,imagePreview,onBack,onAdd}) {
   </div>;
 }
 
-// ─── SwipeIngRow ──────────────────────────────────────────────────────────────
 function SwipeIngRow({ing,idx,editIdx,ingVal,setIngVal,setEditIdx,commitIng,onDelete}) {
   const [swipeX,setSwipeX]=useState(0);const[swiping,setSwiping]=useState(false);
   const tx=useRef(0),ty=useRef(0);const THRESHOLD=70;
@@ -747,7 +750,6 @@ function SwipeIngRow({ing,idx,editIdx,ingVal,setIngVal,setEditIdx,commitIng,onDe
   </div>;
 }
 
-// ─── Detail screen ────────────────────────────────────────────────────────────
 function DetailScreen({meal,onBack,onUpdate,onDelete}) {
   const [ings,setIngs]=useState(meal.ingredients||[]);
   const [editTotal,setEditTotal]=useState(false);
@@ -790,7 +792,6 @@ function DetailScreen({meal,onBack,onUpdate,onDelete}) {
   </div>;
 }
 
-// ─── App root ─────────────────────────────────────────────────────────────────
 function App() {
   const [apiKey,setApiKey]=useState(()=>loadKey());
   const [screen,setScreen]=useState("home");

@@ -444,7 +444,7 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,onOpenSe
 
   const eaten=meals.filter(m=>m.type!=="workout").reduce((s,m)=>s+m.totalCalories,0);
   const burned=meals.filter(m=>m.type==="workout").reduce((s,m)=>s+m.totalCalories,0);
-  const protein=meals.filter(m=>m.type!=="workout").reduce((s,m)=>s+(m.totalProteinG||0),0);
+  const protein=Math.round(meals.filter(m=>m.type!=="workout").reduce((s,m)=>s+(m.totalProteinG||0),0));
   const latestW=weightLog.length>0?weightLog[weightLog.length-1].value:0;
 
   const commitGoal=()=>{const n=parseInt(goalVal);if(!isNaN(n)&&n>0){setBaseGoal(n);saveBaseGoal(n);}else setGoalVal(String(baseGoal));setEditGoal(false);};
@@ -471,7 +471,7 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,onOpenSe
     </div>
 
     <div style={{display:"flex",gap:10,padding:"0 16px 16px"}}>
-      <div style={{flex:1,display:"flex",flexDirection:"column",gap:3,padding:"16px 18px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:18}}>
+      <div style={{flex:1,minWidth:0,overflow:"hidden",display:"flex",flexDirection:"column",gap:3,padding:"16px 18px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:18}}>
         <span style={{fontSize:9,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:2}}>Calories</span>
         <div style={{display:"flex",alignItems:"baseline",gap:3,flexWrap:"wrap"}}>
           <span style={{fontSize:26,fontWeight:800,color:C.text,letterSpacing:"-1px",lineHeight:1}}>{eaten}</span>
@@ -488,7 +488,7 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,onOpenSe
           <span style={{fontSize:9,color:C.dim,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.5px"}}>protein</span>
         </div>
       </div>
-      <div style={{flex:1,display:"flex",flexDirection:"column",gap:3,padding:"16px 18px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:18}}>
+      <div style={{flex:1,minWidth:0,overflow:"hidden",display:"flex",flexDirection:"column",gap:3,padding:"16px 18px",background:C.surface,border:`1px solid ${C.border}`,borderRadius:18}}>
         <span style={{fontSize:9,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:2}}>Weight</span>
         <div style={{display:"flex",alignItems:"baseline",gap:3}}>
           {editWeight
@@ -799,7 +799,7 @@ function DetailScreen({meal,onBack,onUpdate,onDelete}) {
           }
         </div>
         {!isWorkout&&(meal.totalProteinG||0)>0&&<div style={{padding:"16px 14px",background:"rgba(96,200,245,0.1)",border:"1px solid rgba(96,200,245,0.3)",borderRadius:16,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minWidth:72}}>
-          <span style={{fontSize:20,fontWeight:800,color:"#60C8F5",letterSpacing:"-0.5px"}}>{meal.totalProteinG}g</span>
+          <span style={{fontSize:20,fontWeight:800,color:"#60C8F5",letterSpacing:"-0.5px"}}>{Math.round(meal.totalProteinG||0)}g</span>
           <span style={{fontSize:9,color:C.dim,textTransform:"uppercase",letterSpacing:"0.5px",marginTop:1}}>protein</span>
         </div>}
       </div>

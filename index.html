@@ -6,6 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="Just Calories"/>
+<link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;Just Calories&quot;,&quot;short_name&quot;:&quot;Just Calories&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;%230A0A0F&quot;,&quot;theme_color&quot;:&quot;%230A0A0F&quot;}"/>
 <meta name="theme-color" content="#0A0A0F"/>
 <title>Just Calories</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -552,9 +553,7 @@ function HomeScreen({onOpenCamera,onOpenVoice,onSelectMeal,onAddWorkout,onOpenSe
 // permission — browsers do NOT re-prompt if permission is already granted.
 function useWebSpeech(onUpdate) {
   const recRef = useRef(null);
-  const streamRef = useRef(null);
   const [listening, setListening] = useState(false);
-  const [stream, setStream] = useState(null);
   const supported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
   const start = useCallback(() => {
@@ -576,32 +575,23 @@ function useWebSpeech(onUpdate) {
         }
         onUpdate(final + interim);
       };
-      rec.onerror = () => { setListening(false); setStream(null); };
-      rec.onend = () => { setListening(false); setStream(null); };
+      rec.onerror = () => setListening(false);
+      rec.onend = () => setListening(false);
       rec.start();
       setListening(true);
-
-      // Grab the stream for the visualizer after SpeechRecognition has opened
-      // the mic — this reuses the existing permission, no second prompt fires.
-      setTimeout(() => {
-        navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-          .then(s => { streamRef.current = s; setStream(s); })
-          .catch(() => setStream(null));
-      }, 250);
-    } catch { setListening(false); setStream(null); }
+      // NOTE: We intentionally do NOT call getUserMedia here.
+      // SpeechRecognition handles mic access on its own. A separate getUserMedia
+      // call triggers a second iOS permission prompt even when already granted.
+      // The visualizer uses animated bars instead — cosmetically identical.
+    } catch { setListening(false); }
   }, [supported, onUpdate]);
 
   const stop = useCallback(() => {
     try { recRef.current?.stop(); } catch {}
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-    }
     setListening(false);
-    setStream(null);
   }, []);
 
-  return { listening, supported, start, stop, stream };
+  return { listening, supported, start, stop, stream: null };
 }
 
 function VoiceScreen({apiKey,onBack,onAdd}) {
